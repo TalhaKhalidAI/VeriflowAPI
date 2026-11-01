@@ -60,7 +60,8 @@ class ShiftService(BaseService):
     # ================================================================
     @staticmethod
     def _is_admin(current_user: Dict[str, Any]) -> bool:
-        return current_user.get("role") == "admin"
+        role = current_user.get("role") or current_user.get("user_role") or ""
+        return str(role).lower() == "admin"
 
     @staticmethod
     def _get_user_id(current_user: Dict[str, Any]) -> int:
@@ -68,10 +69,20 @@ class ShiftService(BaseService):
 
     @staticmethod
     def _has_permission(current_user: Dict[str, Any], perm: Permission) -> bool:
-        if current_user.get("role") == "admin":
+        if ShiftService._is_admin(current_user):
             return True
         perms = current_user.get("permissions", {})
         return bool(perms.get(perm.value if isinstance(perm, Permission) else perm, False))
+
+    @classmethod
+    def _can_view_any_shifts(cls, current_user: Dict[str, Any]) -> bool:
+        if cls._is_admin(current_user):
+            return True
+        return (
+            cls._has_permission(current_user, Permission.SHIFTS_VIEW_ANY)
+            or cls._has_permission(current_user, Permission.SHIFTS_VIEW_ALL)
+            or cls._has_permission(current_user, Permission.SHIFTS_VIEW)
+        )
 
     @staticmethod
     def _to_dict(shift) -> Dict[str, Any]:
@@ -148,9 +159,13 @@ class ShiftService(BaseService):
         """
         auth_user_id = self._get_user_id(current_user)
 
+        # Enforce permission: user must be admin or have shifts.create
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CREATE):
+            raise PermissionDeniedError("Permission 'shifts.create' is required to start a work shift")
+
         # Enforce user assignment rule
         if target_user_id is not None and target_user_id != auth_user_id:
-            if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CREATE):
+            if not self._is_admin(current_user):
                 raise PermissionDeniedError("Only administrators can initiate shifts for other workers")
             assigned_user_id = target_user_id
         else:
@@ -245,8 +260,12 @@ class ShiftService(BaseService):
         """
         auth_user_id = self._get_user_id(current_user)
 
+        # Enforce permission: user must be admin or have shifts.create
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CREATE):
+            raise PermissionDeniedError("Permission 'shifts.create' is required to reissue shift tokens")
+
         if target_user_id is not None and target_user_id != auth_user_id:
-            if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CREATE):
+            if not self._is_admin(current_user):
                 raise PermissionDeniedError("Only administrators can reissue shift tokens for other workers")
             assigned_user_id = target_user_id
         else:
@@ -270,9 +289,13 @@ class ShiftService(BaseService):
             raise ShiftNotFoundError(f"Shift {shift_id} not found")
 
         auth_user_id = self._get_user_id(current_user)
+
+        # Enforce permission: user must be admin or have shifts.create
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CREATE):
+            raise PermissionDeniedError("Permission 'shifts.create' is required to reissue shift tokens")
+
         if not self._is_admin(current_user) and shift.user_id != auth_user_id:
-            if not self._has_permission(current_user, Permission.SHIFTS_CREATE):
-                raise PermissionDeniedError("Cannot reissue token for a shift belonging to another user")
+            raise PermissionDeniedError("Cannot reissue token for a shift belonging to another user")
 
         if shift.status != "active":
             raise InvalidShiftStateError(
@@ -338,9 +361,13 @@ class ShiftService(BaseService):
             raise ShiftNotFoundError(f"Shift {shift_id} not found")
 
         auth_user_id = self._get_user_id(current_user)
+
+        # Enforce permission: user must be admin or have shifts.checkout
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CHECKOUT):
+            raise PermissionDeniedError("Permission 'shifts.checkout' is required to checkout of a work shift")
+
         if not self._is_admin(current_user) and shift.user_id != auth_user_id:
-            if not self._has_permission(current_user, Permission.SHIFTS_CHECKOUT):
-                raise PermissionDeniedError("Cannot checkout a shift belonging to another user")
+            raise PermissionDeniedError("Cannot checkout a shift belonging to another user")
 
         if shift.status != "active":
             raise InvalidShiftStateError(
@@ -409,7 +436,7 @@ class ShiftService(BaseService):
 
         auth_user_id = self._get_user_id(current_user)
         if not self._is_admin(current_user) and shift.user_id != auth_user_id:
-            if not self._has_permission(current_user, Permission.SHIFTS_VIEW):
+            if not self._can_view_any_shifts(current_user):
                 raise PermissionDeniedError("You do not have permission to view this shift")
 
         return self._to_dict(shift)
@@ -438,9 +465,7 @@ class ShiftService(BaseService):
             - Normal user: restricted to their own user_id.
         - active_only: If True, filters for status == 'active'. If False, returns all (active and inactive).
         """
-        is_privileged = self._is_admin(current_user) or self._has_permission(
-            current_user, Permission.SHIFTS_VIEW
-        )
+        is_privileged = self._can_view_any_shifts(current_user)
         auth_user_id = self._get_user_id(current_user)
 
         if is_privileged:

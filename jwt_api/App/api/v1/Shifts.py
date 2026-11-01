@@ -335,6 +335,8 @@ async def checkout_my_shift(
             shift_id=active_shift["id"],
             current_user=current_user,
         )
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except InvalidShiftStateError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

@@ -15,6 +15,7 @@ from App.core.exceptions import (
     ValidationError,
 )
 from App.core.LoggingInit import get_core_logger
+from App.models.Permissions import Permission
 
 logger = get_core_logger(__name__)
 
@@ -43,11 +44,19 @@ class InventoryRuleService(BaseService):
     # ================================================================
     @staticmethod
     def _is_admin(current_user: Dict[str, Any]) -> bool:
-        return current_user.get("role") == "admin"
+        role = current_user.get("role") or current_user.get("user_role") or ""
+        return str(role).lower() == "admin"
 
     @staticmethod
     def _get_user_id(current_user: Dict[str, Any]) -> int:
         return current_user.get("user_id") or current_user.get("id")
+
+    @staticmethod
+    def _has_permission(current_user: Dict[str, Any], perm: Permission) -> bool:
+        if InventoryRuleService._is_admin(current_user):
+            return True
+        perms = current_user.get("permissions", {})
+        return bool(perms.get(perm.value if isinstance(perm, Permission) else perm, False))
 
     async def _verify_key_ownership(
         self, key_id: Optional[str | uuid.UUID], current_user: Dict[str, Any]
@@ -123,6 +132,9 @@ class InventoryRuleService(BaseService):
         Admin: Can create global rules (key_id=None) or rules for any key.
         Normal user: Can only create rules for keys they own.
         """
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.INVENTORY_RULES_CREATE):
+            raise PermissionDeniedError("Permission 'inventory_rules.create' is required to create inventory rules")
+
         if not rule_name or not rule_name.strip():
             raise ValidationError("Rule name cannot be empty")
         if not matching_claim_key or not matching_claim_key.strip():
@@ -154,6 +166,9 @@ class InventoryRuleService(BaseService):
         self, rule_id: str | uuid.UUID, current_user: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Retrieve a specific rule, verifying read ownership."""
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.INVENTORY_RULES_VIEW):
+            raise PermissionDeniedError("Permission 'inventory_rules.view' is required to view inventory rules")
+
         rule = await self.repo.get_by_id(rule_id)
         if not rule:
             raise InventoryRuleNotFoundError(f"Inventory rule {rule_id} not found")
@@ -180,6 +195,9 @@ class InventoryRuleService(BaseService):
         - Admin: Returns all rules matching query filters (global + all keys).
         - Normal User: Returns only rules attached to keys owned by this user.
         """
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.INVENTORY_RULES_VIEW):
+            raise PermissionDeniedError("Permission 'inventory_rules.view' is required to list inventory rules")
+
         if self._is_admin(current_user):
             rules = await self.repo.list_rules(
                 key_id=key_id, is_active=is_active, limit=limit, offset=offset
@@ -221,6 +239,9 @@ class InventoryRuleService(BaseService):
         is_active: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Update an existing inventory rule enforcing ownership."""
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.INVENTORY_RULES_UPDATE):
+            raise PermissionDeniedError("Permission 'inventory_rules.update' is required to update inventory rules")
+
         rule = await self.repo.get_by_id(rule_id)
         if not rule:
             raise InventoryRuleNotFoundError(f"Inventory rule {rule_id} not found")
@@ -262,6 +283,9 @@ class InventoryRuleService(BaseService):
         self, rule_id: str | uuid.UUID, current_user: Dict[str, Any]
     ) -> bool:
         """Permanently delete an inventory rule enforcing ownership."""
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.INVENTORY_RULES_DELETE):
+            raise PermissionDeniedError("Permission 'inventory_rules.delete' is required to delete inventory rules")
+
         rule = await self.repo.get_by_id(rule_id)
         if not rule:
             raise InventoryRuleNotFoundError(f"Inventory rule {rule_id} not found")

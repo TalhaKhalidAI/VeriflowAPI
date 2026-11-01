@@ -424,7 +424,7 @@ export function RulesPage() {
             )}
             {keys.map((k) => (
               <MenuItem key={k.id} value={k.id}>
-                🔑 {k.name} (kid: {k.kid}) — {k.status.toUpperCase()}
+                🔑 {k.name} (kid: {k.kid}) — {k.status ? k.status.toUpperCase() : "ACTIVE"}
               </MenuItem>
             ))}
           </TextField>
@@ -509,7 +509,7 @@ export function RulesPage() {
             </MenuItem>
             {keys.map((k) => (
               <MenuItem key={k.id} value={k.id}>
-                🔑 {k.name} (kid: {k.kid}) — {k.status.toUpperCase()}
+                🔑 {k.name} (kid: {k.kid}) — {k.status ? k.status.toUpperCase() : "ACTIVE"}
               </MenuItem>
             ))}
           </TextField>
@@ -613,47 +613,78 @@ export function RulesPage() {
             {evaluateMutation.isPending ? <CircularProgress size={20} /> : 'Run Evaluation'}
           </Button>
 
-          {evaluateMutation.data && (
-            <Box
-              sx={{
-                p: 2.5,
-                borderRadius: 2,
-                bgcolor: '#07111D',
-                border: `1px solid ${
-                  evaluateMutation.data.status === 'passed'
-                    ? 'rgba(16, 185, 129, 0.4)'
-                    : 'rgba(239, 68, 68, 0.4)'
-                }`,
-              }}
-            >
-              <Typography
-                variant="subtitle1"
-                fontWeight={700}
+          {evaluateMutation.data && (() => {
+            const data = evaluateMutation.data;
+            const isValid = data.is_valid ?? (data.status === 'passed');
+            const totalEvaluated = data.evaluated_rules_count ?? data.total_rules_evaluated ?? 0;
+            const violations = data.violations || [];
+            const failedCount = violations.length;
+            const passedCount = Math.max(0, totalEvaluated - failedCount);
+
+            return (
+              <Box
                 sx={{
-                  color: evaluateMutation.data.status === 'passed' ? '#34D399' : '#F87171',
-                  mb: 1,
+                  p: 2.5,
+                  borderRadius: 2,
+                  bgcolor: '#07111D',
+                  border: `1px solid ${
+                    isValid ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'
+                  }`,
                 }}
               >
-                RESULT: {evaluateMutation.data.status.toUpperCase()}
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#94A3B8' }}>
-                Evaluated: {evaluateMutation.data.total_rules_evaluated} rules | Passed:{' '}
-                {evaluateMutation.data.passed_rules_count} | Failed:{' '}
-                {evaluateMutation.data.failed_rules_count}
-              </Typography>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        isValid ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
+                      }`}
+                    />
+                    <Typography
+                      variant="subtitle1"
+                      fontWeight={800}
+                      sx={{
+                        color: isValid ? '#34D399' : '#F87171',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.05em',
+                      }}
+                    >
+                      EVALUATION RESULT: {isValid ? 'PASSED (VALID)' : 'VIOLATIONS DETECTED'}
+                    </Typography>
+                  </div>
+                  <span
+                    className={`badge font-mono font-bold text-xs ${
+                      isValid ? 'badge-success text-slate-900' : 'badge-error text-white'
+                    }`}
+                  >
+                    {isValid ? 'VERIFIED' : 'POLICY REJECTED'}
+                  </span>
+                </div>
 
-              {evaluateMutation.data.violations?.length > 0 && (
-                <Stack spacing={1} sx={{ mt: 2 }}>
-                  {evaluateMutation.data.violations.map((v, idx) => (
-                    <Alert key={idx} severity="error" sx={{ bgcolor: 'rgba(239, 68, 68, 0.1)' }}>
-                      <strong>{v.rule_name}</strong>: Expected <code>{v.expected_value}</code> for{' '}
-                      <code>{v.claim_key}</code>, but got <code>{JSON.stringify(v.actual_value)}</code>
-                    </Alert>
-                  ))}
-                </Stack>
-              )}
-            </Box>
-          )}
+                <Typography variant="body2" sx={{ color: '#94A3B8', fontFamily: 'monospace' }}>
+                  Evaluated: {totalEvaluated} rules | Passed: {passedCount} | Violations: {failedCount}
+                </Typography>
+
+                {violations.length > 0 && (
+                  <Stack spacing={1} sx={{ mt: 2 }}>
+                    {violations.map((v, idx) => (
+                      <Alert
+                        key={idx}
+                        severity="error"
+                        sx={{ bgcolor: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                      >
+                        <strong>{v.rule_name || `Rule #${v.rule_id}`}</strong>:{' '}
+                        {v.reason || (
+                          <>
+                            Expected <code>{v.expected_value}</code> for <code>{v.claim_key}</code>, but got <code>{JSON.stringify(v.actual_value)}</code>
+                          </>
+                        )}
+                      </Alert>
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+            );
+          })()}
         </DialogContent>
         <DialogActions sx={{ p: 2.5 }}>
           <Button onClick={() => setTestDialogOpen(false)} sx={{ color: '#94A3B8' }}>

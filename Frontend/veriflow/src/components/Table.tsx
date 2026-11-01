@@ -285,15 +285,15 @@ export const Table = <T extends Record<string, any>>({
   const hasActions = !!(actions?.length || actionRenderer);
   const hasCheckbox = showCheckbox && selectable;
 
-  // ─── Action Button Styles ──────────────────────────────────
-  const variantStyles: Record<string, { color: string; border: string; bg: string; hoverBg: string }> = {
-    info: { color: '#38BDF8', border: 'rgba(56, 189, 248, 0.3)', bg: 'rgba(56, 189, 248, 0.1)', hoverBg: 'rgba(56, 189, 248, 0.25)' },
-    warning: { color: '#FBBF24', border: 'rgba(251, 191, 36, 0.3)', bg: 'rgba(251, 191, 36, 0.1)', hoverBg: 'rgba(251, 191, 36, 0.25)' },
-    error: { color: '#F87171', border: 'rgba(248, 113, 113, 0.3)', bg: 'rgba(248, 113, 113, 0.1)', hoverBg: 'rgba(248, 113, 113, 0.25)' },
-    success: { color: '#34D399', border: 'rgba(52, 211, 153, 0.3)', bg: 'rgba(52, 211, 153, 0.1)', hoverBg: 'rgba(52, 211, 153, 0.25)' },
-    primary: { color: '#60A5FA', border: 'rgba(96, 165, 250, 0.3)', bg: 'rgba(96, 165, 250, 0.1)', hoverBg: 'rgba(96, 165, 250, 0.25)' },
-    ghost: { color: '#94A3B8', border: 'transparent', bg: 'transparent', hoverBg: 'rgba(255, 255, 255, 0.08)' },
-    default: { color: '#CBD5E1', border: '#1E293B', bg: '#07111D', hoverBg: '#1E293B' },
+  // ─── Action Button Styles (Industrial Minimalist Tech) ──
+  const variantStyles: Record<string, { color: string; border: string; bg: string; hoverBorder: string; hoverBg: string }> = {
+    info: { color: '#38BDF8', border: '#1E293B', bg: '#0F172A', hoverBorder: '#38BDF8', hoverBg: 'rgba(56, 189, 248, 0.15)' },
+    warning: { color: '#FACC15', border: '#1E293B', bg: '#0F172A', hoverBorder: '#FACC15', hoverBg: 'rgba(250, 204, 21, 0.15)' },
+    error: { color: '#F87171', border: '#1E293B', bg: '#0F172A', hoverBorder: '#F87171', hoverBg: 'rgba(248, 113, 113, 0.15)' },
+    success: { color: '#34D399', border: '#1E293B', bg: '#0F172A', hoverBorder: '#34D399', hoverBg: 'rgba(52, 211, 153, 0.15)' },
+    primary: { color: '#60A5FA', border: '#1E293B', bg: '#0F172A', hoverBorder: '#60A5FA', hoverBg: 'rgba(96, 165, 250, 0.15)' },
+    ghost: { color: '#94A3B8', border: 'transparent', bg: 'transparent', hoverBorder: '#334155', hoverBg: 'rgba(255, 255, 255, 0.08)' },
+    default: { color: '#94A3B8', border: '#1E293B', bg: '#0F172A', hoverBorder: '#FACC15', hoverBg: 'rgba(250, 204, 21, 0.1)' },
   };
 
   const renderActionButtons = (row: T, index: number) => {
@@ -303,7 +303,7 @@ export const Table = <T extends Record<string, any>>({
     if (!actions || actions.length === 0) return null;
 
     return (
-      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
         {actions.map((action, idx) => {
           if (action.render) {
             return <React.Fragment key={idx}>{action.render(row, index)}</React.Fragment>;
@@ -311,6 +311,7 @@ export const Table = <T extends Record<string, any>>({
 
           const isDisabled = action.disabled?.(row) || false;
           const style = variantStyles[action.variant || 'default'] || variantStyles.default;
+          const isIconOnly = !action.label && !!action.icon;
 
           return (
             <button
@@ -324,23 +325,37 @@ export const Table = <T extends Record<string, any>>({
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
+                justifyContent: 'center',
+                gap: 5,
+                width: isIconOnly ? 30 : 'auto',
+                height: 30,
+                padding: isIconOnly ? 0 : '0 10px',
                 fontSize: '0.75rem',
                 fontWeight: 600,
-                borderRadius: 6,
+                borderRadius: 7,
                 border: `1px solid ${style.border}`,
                 backgroundColor: style.bg,
-                color: isDisabled ? '#64748B' : style.color,
+                color: isDisabled ? '#475569' : style.color,
                 cursor: isDisabled ? 'not-allowed' : 'pointer',
-                opacity: isDisabled ? 0.5 : 1,
-                transition: 'all 0.2s',
+                opacity: isDisabled ? 0.35 : 1,
+                transition: 'all 0.15s ease',
+                flexShrink: 0,
               }}
               onMouseEnter={(e) => {
-                if (!isDisabled) e.currentTarget.style.backgroundColor = style.hoverBg;
+                if (!isDisabled) {
+                  e.currentTarget.style.backgroundColor = style.hoverBg;
+                  e.currentTarget.style.borderColor = style.hoverBorder;
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = `0 2px 8px ${style.hoverBorder}25`;
+                }
               }}
               onMouseLeave={(e) => {
-                if (!isDisabled) e.currentTarget.style.backgroundColor = style.bg;
+                if (!isDisabled) {
+                  e.currentTarget.style.backgroundColor = style.bg;
+                  e.currentTarget.style.borderColor = style.border;
+                  e.currentTarget.style.transform = 'none';
+                  e.currentTarget.style.boxShadow = 'none';
+                }
               }}
             >
               {action.icon}
@@ -515,7 +530,7 @@ export const Table = <T extends Record<string, any>>({
               {hasActions && (
                 <th
                   style={{
-                    width: 140,
+                    width: 'auto', minWidth: 120, whiteSpace: 'nowrap',
                     textAlign: 'right',
                     padding: cellPadding,
                     color: '#94A3B8',
@@ -662,7 +677,7 @@ export const Table = <T extends Record<string, any>>({
                     ))}
 
                     {hasActions && (
-                      <td style={{ textAlign: 'right', padding: cellPadding }} className={cellClassName}>
+                      <td style={{ textAlign: 'right', padding: cellPadding, whiteSpace: 'nowrap', width: '1%' }} className={cellClassName}>
                         {renderActionButtons(row, globalIndex)}
                       </td>
                     )}

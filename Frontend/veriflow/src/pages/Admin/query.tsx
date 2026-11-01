@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { http } from '../../api/http/https';
 import { ToastMsgs } from '../../api/toastUtils';
+import { useAuthStore } from '../../store/authStore';
 import type {
   AdminUser,
   PermissionListResponse,
@@ -20,11 +21,15 @@ export interface UserQueryOptions {
   show_permissions?: boolean;
 }
 
-export const useAdminUsersQuery = (options: UserQueryOptions = {}) => {
-  const { show_disabled = true, show_deleted = false, show_permissions = true } = options;
+export const useAdminUsersQuery = (options: UserQueryOptions & { enabled?: boolean } = {}) => {
+  const { show_disabled = true, show_deleted = false, show_permissions = true, enabled } = options;
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
+  const isQueryEnabled = enabled !== undefined ? (enabled && isAdmin) : isAdmin;
 
   return useQuery({
     queryKey: ['admin', 'users', show_disabled, show_deleted, show_permissions],
+    enabled: isQueryEnabled,
     queryFn: async (): Promise<AdminUser[]> => {
       // 1. Fetch full user config accounts from GET /users/users_config/users
       let usersList: any[] = [];
@@ -86,9 +91,14 @@ export const useAdminUsersQuery = (options: UserQueryOptions = {}) => {
   });
 };
 
-export const useAllPermissionsQuery = () => {
+export const useAllPermissionsQuery = (enabled?: boolean) => {
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
+  const isQueryEnabled = enabled !== undefined ? (enabled && isAdmin) : isAdmin;
+
   return useQuery({
     queryKey: ['admin', 'all_permissions'],
+    enabled: isQueryEnabled,
     queryFn: async () => {
       const res = await http.get<PermissionListResponse>('/admin/admin_access/get_all_permissions');
       return res.permissions || [];

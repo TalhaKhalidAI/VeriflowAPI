@@ -10,7 +10,7 @@ import type {
   EvaluateClaimsResponse,
 } from './types';
 
-export const useRulesQuery = () => {
+export const useRulesQuery = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ['rules'],
     queryFn: async () => {
@@ -18,6 +18,7 @@ export const useRulesQuery = () => {
       return data;
     },
     staleTime: 1000 * 30,
+    enabled: options?.enabled,
   });
 };
 

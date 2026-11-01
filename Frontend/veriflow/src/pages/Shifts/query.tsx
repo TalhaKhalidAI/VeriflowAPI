@@ -27,7 +27,7 @@ export const useActiveShiftQuery = () => {
   });
 };
 
-export const useShiftsQuery = () => {
+export const useShiftsQuery = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ['shifts'],
     queryFn: async () => {
@@ -35,6 +35,7 @@ export const useShiftsQuery = () => {
       return data;
     },
     staleTime: 1000 * 30,
+    enabled: options?.enabled,
   });
 };
 

@@ -127,9 +127,25 @@ export function KeysPage() {
     warehouse: 'WH-CENTRAL-01',
     key_id: '',
     duration: 30,
-    unit: 'days' as 'days' | 'hours' | 'minutes' | 'weeks' | 'months',
+    unit: 'days' as 'days' | 'hours' | 'minutes' | 'weeks' | 'months' | 'years',
     qr_only: false,
   });
+  const [tagPayloadMode, setTagPayloadMode] = useState<'form' | 'json'>('form');
+  const [tagRawJson, setTagRawJson] = useState<string>(
+    JSON.stringify(
+      {
+        sku: 'SKU-99201',
+        batch_no: 'BATCH-2026-X',
+        warehouse_id: 'WH-CENTRAL-01',
+        product_name: 'Industrial Sensor Unit',
+        hazard_class: 'NON-HAZARDOUS',
+        inspection_status: 'passed',
+      },
+      null,
+      2
+    )
+  );
+  const [tagJsonError, setTagJsonError] = useState<string | null>(null);
 
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -245,13 +261,27 @@ export function KeysPage() {
   };
 
   const handleGenerateTag = async () => {
-    await generateTagMutation.mutateAsync({
-      key_id: tagForm.key_id || undefined,
-      payload: {
+    let finalPayload: Record<string, any>;
+    if (tagPayloadMode === 'json') {
+      try {
+        finalPayload = JSON.parse(tagRawJson);
+        setTagJsonError(null);
+      } catch (err: any) {
+        setTagJsonError('Invalid JSON format: ' + (err?.message || 'Syntax error'));
+        ToastMsgs.error('Invalid Raw JSON syntax');
+        return;
+      }
+    } else {
+      finalPayload = {
         sku: tagForm.sku,
         batch_no: tagForm.batch,
         warehouse_id: tagForm.warehouse,
-      },
+      };
+    }
+
+    await generateTagMutation.mutateAsync({
+      key_id: tagForm.key_id || undefined,
+      payload: finalPayload,
       expires_in_value: tagForm.duration,
       expires_in_unit: tagForm.unit,
       box_size: 10,
@@ -379,76 +409,73 @@ export function KeysPage() {
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1.5} flexWrap="wrap">
-          <Button
-            variant="outlined"
-            startIcon={<VerifyIcon />}
+        {/* Sleek Industrial Command Toolbar */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Tool actions with unified industrial theme */}
+          <button
             onClick={() => {
               setVerifyResult(null);
               setVerifyTokenInput('');
               setVerifyModalOpen(true);
             }}
-            sx={{ borderColor: '#334155', color: '#38BDF8' }}
+            className="btn btn-sm bg-[#0F172A] border border-[#1E293B] hover:border-sky-400 text-slate-300 hover:text-white font-mono text-xs font-semibold gap-1.5 transition-all shadow-sm"
           >
-            Verify RS256 Token
-          </Button>
+            <VerifyIcon sx={{ fontSize: 16, color: '#38BDF8' }} />
+            <span>Verify Token</span>
+          </button>
 
           {canIssueToken && (
-            <Button
-              variant="outlined"
-              startIcon={<IssueIcon />}
+            <button
               onClick={() => {
                 setIssuedTokenResult(null);
                 setIssueTokenModalOpen(true);
               }}
-              sx={{ borderColor: '#334155', color: '#10B981' }}
+              className="btn btn-sm bg-[#0F172A] border border-[#1E293B] hover:border-emerald-400 text-slate-300 hover:text-white font-mono text-xs font-semibold gap-1.5 transition-all shadow-sm"
             >
-              Issue RS256 Token
-            </Button>
+              <IssueIcon sx={{ fontSize: 16, color: '#10B981' }} />
+              <span>Issue Token</span>
+            </button>
           )}
 
           {canCreateTags && (
-            <Button
-              variant="outlined"
-              startIcon={<QrCodeIcon />}
+            <button
               onClick={() => setTagModalOpen(true)}
-              sx={{ borderColor: '#FACC15', color: '#FACC15', '&:hover': { bgcolor: 'rgba(250, 204, 21, 0.1)' } }}
+              className="btn btn-sm bg-[#0F172A] border border-[#1E293B] hover:border-yellow-400 text-slate-300 hover:text-yellow-400 font-mono text-xs font-semibold gap-1.5 transition-all shadow-sm"
             >
-              Product Tag QR
-            </Button>
+              <QrCodeIcon sx={{ fontSize: 16, color: '#FACC15' }} />
+              <span>Product Tag QR</span>
+            </button>
           )}
 
-          <Button
-            variant="outlined"
-            startIcon={<VisibilityIcon />}
+          <button
             onClick={() => setJwksModalOpen(true)}
-            sx={{ borderColor: '#334155', color: '#94A3B8' }}
+            className="btn btn-sm bg-[#0F172A] border border-[#1E293B] hover:border-slate-400 text-slate-400 hover:text-white font-mono text-xs font-semibold gap-1.5 transition-all shadow-sm"
           >
-            JWKS
-          </Button>
+            <VisibilityIcon sx={{ fontSize: 16 }} />
+            <span>JWKS</span>
+          </button>
 
+          {/* Primary Operations */}
           {canRotateKey && (
-            <Button
-              variant="contained"
-              startIcon={<RotateIcon />}
+            <button
               onClick={() => setRotateModalOpen(true)}
-              sx={{ bgcolor: '#10B981', '&:hover': { bgcolor: '#059669' } }}
+              className="btn btn-sm bg-[#0F172A] border border-emerald-500/50 hover:bg-emerald-500/15 text-emerald-400 font-mono text-xs font-bold gap-1.5 transition-all shadow-sm"
             >
-              Rotate Key
-            </Button>
+              <RotateIcon sx={{ fontSize: 16 }} />
+              <span>Rotate Key</span>
+            </button>
           )}
 
           {canCreateKey && (
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
+            <button
               onClick={() => setCreateModalOpen(true)}
-              sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' } }}
+              className="btn btn-sm btn-warning font-mono text-xs font-extrabold text-slate-900 gap-1.5 shadow-[0_0_15px_rgba(250,204,21,0.25)] hover:bg-yellow-400"
             >
-              Generate Key
-            </Button>
+              <AddIcon sx={{ fontSize: 18 }} />
+              <span>Generate Key</span>
+            </button>
           )}
-        </Stack>
+        </div>
       </Box>
 
       {/* Keys Table */}
@@ -932,9 +959,50 @@ export function KeysPage() {
         <DialogContent sx={{ bgcolor: '#0B132B', pt: 3 }}>
           {tagTab === 0 && (
             <Stack spacing={2.5}>
-              <Typography variant="body2" sx={{ color: '#94A3B8' }}>
-                Signs arbitrary inventory attributes with RSA and dynamically generates a fitted QR code image.
-              </Typography>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1E293B] pb-2.5">
+                <Typography variant="body2" sx={{ color: '#94A3B8' }}>
+                  Signs arbitrary inventory attributes with RSA and dynamically generates a fitted QR code image.
+                </Typography>
+                
+                {/* Input Mode Selector: Form vs Raw JSON */}
+                <div className="join shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTagRawJson(
+                        JSON.stringify(
+                          {
+                            sku: tagForm.sku,
+                            batch_no: tagForm.batch,
+                            warehouse_id: tagForm.warehouse,
+                          },
+                          null,
+                          2
+                        )
+                      );
+                      setTagPayloadMode('form');
+                    }}
+                    className={`join-item btn btn-xs font-mono transition-all ${
+                      tagPayloadMode === 'form'
+                        ? 'btn-warning font-bold text-slate-900 shadow-sm'
+                        : 'btn-ghost text-slate-400'
+                    }`}
+                  >
+                    Standard Form
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTagPayloadMode('json')}
+                    className={`join-item btn btn-xs font-mono transition-all ${
+                      tagPayloadMode === 'json'
+                        ? 'btn-warning font-bold text-slate-900 shadow-sm'
+                        : 'btn-ghost text-slate-400'
+                    }`}
+                  >
+                    {'{ }'} Raw JSON Payload
+                  </button>
+                </div>
+              </div>
 
               <TextField
                 select
@@ -950,32 +1018,102 @@ export function KeysPage() {
                 </MenuItem>
                 {keys.map((k) => (
                   <MenuItem key={k.id} value={k.id}>
-                    🔑 {k.name} (kid: {k.kid}) — {k.status.toUpperCase()}
+                    🔑 {k.name} (kid: {k.kid}) — {k.status ? k.status.toUpperCase() : 'ACTIVE'}
                   </MenuItem>
                 ))}
               </TextField>
 
-              <TextField
-                label="SKU / Item Code"
-                value={tagForm.sku}
-                onChange={(e) => setTagForm({ ...tagForm, sku: e.target.value })}
-                fullWidth
-                size="small"
-              />
-              <TextField
-                label="Batch Number"
-                value={tagForm.batch}
-                onChange={(e) => setTagForm({ ...tagForm, batch: e.target.value })}
-                fullWidth
-                size="small"
-              />
-              <TextField
-                label="Warehouse ID"
-                value={tagForm.warehouse}
-                onChange={(e) => setTagForm({ ...tagForm, warehouse: e.target.value })}
-                fullWidth
-                size="small"
-              />
+              {/* Conditional Mode: Standard Form vs Raw JSON Editor */}
+              {tagPayloadMode === 'form' ? (
+                <>
+                  <TextField
+                    label="SKU / Item Code"
+                    value={tagForm.sku}
+                    onChange={(e) => setTagForm({ ...tagForm, sku: e.target.value })}
+                    fullWidth
+                    size="small"
+                    placeholder="e.g. SKU-99201"
+                  />
+                  <TextField
+                    label="Batch Number"
+                    value={tagForm.batch}
+                    onChange={(e) => setTagForm({ ...tagForm, batch: e.target.value })}
+                    fullWidth
+                    size="small"
+                    placeholder="e.g. BATCH-2026-X"
+                  />
+                  <TextField
+                    label="Warehouse ID"
+                    value={tagForm.warehouse}
+                    onChange={(e) => setTagForm({ ...tagForm, warehouse: e.target.value })}
+                    fullWidth
+                    size="small"
+                    placeholder="e.g. WH-CENTRAL-01"
+                  />
+                </>
+              ) : (
+                <Box>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-mono font-bold text-yellow-400">
+                      Arbitrary Product Claims JSON Payload (POST /app/v1/keys/tags/qr):
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTagRawJson(
+                          JSON.stringify(
+                            {
+                              sku: 'SKU-99201',
+                              batch_no: 'BATCH-2026-X',
+                              warehouse_id: 'WH-CENTRAL-01',
+                              product_name: 'Precision Pressure Sensor',
+                              hazard_class: 'NON-HAZARDOUS',
+                              custom_claims: {
+                                operating_temp: '-40C to 85C',
+                                voltage: '24V DC',
+                                inspected_by: 'QA-TECH-04',
+                              },
+                            },
+                            null,
+                            2
+                          )
+                        );
+                        setTagJsonError(null);
+                      }}
+                      className="text-[11px] font-mono text-[#38BDF8] hover:underline"
+                    >
+                      ↺ Load Full Sample Payload
+                    </button>
+                  </div>
+                  <TextField
+                    multiline
+                    rows={8}
+                    fullWidth
+                    value={tagRawJson}
+                    onChange={(e) => {
+                      setTagRawJson(e.target.value);
+                      try {
+                        JSON.parse(e.target.value);
+                        setTagJsonError(null);
+                      } catch (err: any) {
+                        setTagJsonError(err.message);
+                      }
+                    }}
+                    error={!!tagJsonError}
+                    helperText={tagJsonError || 'Valid JSON dictionary passed directly as arbitrary claims to the token signer'}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        bgcolor: '#07111D',
+                        fontFamily: 'monospace',
+                        fontSize: '0.82rem',
+                        color: '#F8FAFC',
+                        '& fieldset': { borderColor: tagJsonError ? '#EF4444' : '#1E293B' },
+                        '&:hover fieldset': { borderColor: '#FACC15' },
+                      },
+                    }}
+                  />
+                </Box>
+              )}
 
               <Stack direction="row" spacing={2}>
                 <TextField
@@ -993,10 +1131,12 @@ export function KeysPage() {
                     label="Unit"
                     onChange={(e) => setTagForm({ ...tagForm, unit: e.target.value as any })}
                   >
+                    <MenuItem value="minutes">Minutes</MenuItem>
                     <MenuItem value="hours">Hours</MenuItem>
                     <MenuItem value="days">Days</MenuItem>
                     <MenuItem value="weeks">Weeks</MenuItem>
                     <MenuItem value="months">Months</MenuItem>
+                    <MenuItem value="years">Years</MenuItem>
                   </Select>
                 </FormControl>
               </Stack>

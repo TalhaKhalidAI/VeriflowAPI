@@ -39,16 +39,19 @@ export interface EvaluateClaimsPayload {
 export interface RuleViolationItem {
   rule_id: string;
   rule_name: string;
-  claim_key: string;
-  expected_value: string;
-  actual_value: any;
-  message: string;
+  reason?: string;
+  claim_key?: string;
+  expected_value?: string;
+  actual_value?: any;
+  message?: string;
 }
 
 export interface EvaluateClaimsResponse {
-  status: 'passed' | 'failed';
-  total_rules_evaluated: number;
-  passed_rules_count: number;
-  failed_rules_count: number;
-  violations: RuleViolationItem[];
+  is_valid: boolean;
+  status?: string;
+  evaluated_rules_count?: number;
+  total_rules_evaluated?: number;
+  passed_rules_count?: number;
+  failed_rules_count?: number;
+  violations?: RuleViolationItem[];
 }

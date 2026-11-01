@@ -51,6 +51,9 @@ class Permission(str, Enum):
 
     # ===== VERIFLOW: SHIFT MANAGEMENT =====
     SHIFTS_VIEW = "shifts.view"
+    SHIFTS_VIEW_ANY = "shifts.view.any"
+    SHIFTS_VIEW_ALL = "shifts.view.all"
+    SHIFTS_VIEW_OWN = "shifts.view.own"
     SHIFTS_CREATE = "shifts.create"
     SHIFTS_REVOKE = "shifts.revoke"
     SHIFTS_CHECKOUT = "shifts.checkout"

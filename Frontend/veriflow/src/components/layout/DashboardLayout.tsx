@@ -141,7 +141,8 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
       requirement.permissions,
       requirement.mode,
       user?.role,
-      user?.user_role
+      user?.user_role,
+      requirement.adminOnly
     );
     return allowed;
   });

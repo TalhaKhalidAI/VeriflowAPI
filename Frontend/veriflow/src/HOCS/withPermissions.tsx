@@ -5,13 +5,19 @@ import { useAuthStore } from '../store/authStore';
 
 export type PermissionMode = 'all' | 'any';
 
-export const PERMISSION_MAP: Record<string, { permissions: string[]; mode: PermissionMode }> = {
+export interface PermissionRequirement {
+  permissions: string[];
+  mode: PermissionMode;
+  adminOnly?: boolean;
+}
+
+export const PERMISSION_MAP: Record<string, PermissionRequirement> = {
   dashboard: { permissions: [], mode: 'any' },
   keys: { permissions: ['keys.view', 'keys.create'], mode: 'any' },
   rules: { permissions: ['inventory_rules.view', 'inventory_rules.create'], mode: 'any' },
-  shifts: { permissions: ['shifts.view', 'shifts.create'], mode: 'any' },
+  shifts: { permissions: ['shifts.view', 'shifts.view.any', 'shifts.view.all', 'shifts.view.own', 'shifts.create'], mode: 'any' },
   scans: { permissions: ['scans.view.any', 'scans.view.own', 'scans.create'], mode: 'any' },
-  admin: { permissions: ['admin.access', 'admin.users.view', 'admin.users.promote'], mode: 'any' },
+  admin: { permissions: ['admin.access'], mode: 'all', adminOnly: true },
   security: { permissions: [], mode: 'any' },
 };
 
@@ -20,11 +26,20 @@ export const checkPermission = (
   requiredPermissions: string[] = [],
   mode: PermissionMode = 'any',
   userRole?: string,
-  userRoleFromAPI?: string
+  userRoleFromAPI?: string,
+  adminOnly?: boolean
 ): { allowed: boolean; missing?: string[]; required?: string[] } => {
   const isAdmin = userRole?.toLowerCase() === 'admin' || userRoleFromAPI?.toLowerCase() === 'admin';
+
+  // Strict Admin Isolation: If this requirement is adminOnly, non-admins are unconditionally forbidden!
+  if (adminOnly && !isAdmin) {
+    return { allowed: false, required: ['role:admin'], missing: ['role:admin'] };
+  }
+
+  // Admins bypass normal permission checks
   if (isAdmin) return { allowed: true };
 
+  // If requirement is public to authenticated users
   if (!requiredPermissions || requiredPermissions.length === 0) return { allowed: true };
 
   if (!userPermissions || Object.keys(userPermissions).length === 0) {
@@ -65,14 +80,15 @@ export function withPermission<P extends object>(
       requirement?.permissions || [],
       requirement?.mode || 'any',
       user?.role,
-      user?.user_role
+      user?.user_role,
+      requirement?.adminOnly
     );
 
     if (!allowed) {
       if (missing && missing.length > 0) {
-        console.warn(`🔒 [withPermission] Missing permissions for ${pageKey}: ${missing.join(', ')}`);
+        console.warn(`🔒 [withPermission] Access denied for ${pageKey}. Missing: ${missing.join(', ')}`);
       } else if (required && required.length > 0) {
-        console.warn(`🔒 [withPermission] Need at least one of: ${required.join(', ')}`);
+        console.warn(`🔒 [withPermission] Access denied for ${pageKey}. Requires: ${required.join(', ')}`);
       }
       return <Navigate to={fallbackPath} replace />;
     }
@@ -82,6 +98,11 @@ export function withPermission<P extends object>(
 
   WrappedComponent.displayName = `withPermission(${Component.displayName || Component.name || 'Component'})`;
   return WrappedComponent;
+}
+
+export function useIsAdmin(): boolean {
+  const user = useAuthStore((state) => state.user);
+  return user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
 }
 
 export function usePermission(pageKey: string) {
@@ -98,7 +119,8 @@ export function usePermission(pageKey: string) {
     requirement.permissions,
     requirement.mode,
     user?.role,
-    user?.user_role
+    user?.user_role,
+    requirement.adminOnly
   );
 }
 

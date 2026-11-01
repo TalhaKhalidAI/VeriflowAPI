@@ -43,7 +43,8 @@ class ScanHistoryService(BaseService):
     # ================================================================
     @staticmethod
     def _is_admin(current_user: Dict[str, Any]) -> bool:
-        return current_user.get("role") == "admin"
+        role = current_user.get("role") or current_user.get("user_role") or ""
+        return str(role).lower() == "admin"
 
     @staticmethod
     def _get_user_id(current_user: Dict[str, Any]) -> int:
@@ -51,7 +52,7 @@ class ScanHistoryService(BaseService):
 
     @staticmethod
     def _has_permission(current_user: Dict[str, Any], perm: Permission) -> bool:
-        if current_user.get("role") == "admin":
+        if ScanHistoryService._is_admin(current_user):
             return True
         perms = current_user.get("permissions", {})
         return bool(perms.get(perm.value if isinstance(perm, Permission) else perm, False))
@@ -212,6 +213,9 @@ class ScanHistoryService(BaseService):
         if not shift:
             raise ShiftNotFoundError(f"Shift {shift_id} not found")
 
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SCANS_CREATE):
+            raise PermissionDeniedError("Permission 'scans.create' is required to log scans")
+
         user_id = self._get_user_id(current_user)
         if not self._is_admin(current_user) and shift.user_id != user_id:
             raise PermissionDeniedError("Cannot log scans to a shift owned by another user")
@@ -241,6 +245,9 @@ class ScanHistoryService(BaseService):
         shift = await self.shift_repo.get_by_id(shift_id)
         if not shift:
             raise ShiftNotFoundError(f"Shift {shift_id} not found")
+
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SCANS_CREATE):
+            raise PermissionDeniedError("Permission 'scans.create' is required to sync scans")
 
         user_id = self._get_user_id(current_user)
         if not self._is_admin(current_user) and shift.user_id != user_id:

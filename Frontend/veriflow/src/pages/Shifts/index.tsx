@@ -52,6 +52,7 @@ export function ShiftsPage() {
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin' || user?.user_role === 'admin';
   const canCreateShift = isAdmin || Boolean(user?.permissions?.['shifts.create']);
+  const canCheckoutShift = isAdmin || Boolean(user?.permissions?.['shifts.checkout']);
 
   const { data: activeShift, isLoading: isLoadingActive } = useActiveShiftQuery();
   const { data: shiftsData, isLoading: isLoadingShifts } = useShiftsQuery();
@@ -245,24 +246,28 @@ export function ShiftsPage() {
   ];
 
   const shiftActions: TableAction<ShiftRecord>[] = [
-    {
-      label: 'Checkout',
-      variant: 'error',
-      disabled: (s) => s.status !== 'active',
-      onClick: (s) => handleCheckout(s.id),
-      render: (s) =>
-        s.status === 'active' ? (
-          <Button
-            size="small"
-            variant="outlined"
-            color="error"
-            onClick={() => handleCheckout(s.id)}
-            sx={{ py: 0.25, px: 1, fontSize: 11 }}
-          >
-            Checkout
-          </Button>
-        ) : null,
-    },
+    ...(canCheckoutShift
+      ? [
+          {
+            label: 'Checkout',
+            variant: 'error' as const,
+            disabled: (s: ShiftRecord) => s.status !== 'active',
+            onClick: (s: ShiftRecord) => handleCheckout(s.id),
+            render: (s: ShiftRecord) =>
+              s.status === 'active' ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  onClick={() => handleCheckout(s.id)}
+                  sx={{ py: 0.25, px: 1, fontSize: 11 }}
+                >
+                  Checkout
+                </Button>
+              ) : null,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -291,28 +296,32 @@ export function ShiftsPage() {
         <Stack direction="row" spacing={1.5} flexWrap="wrap">
           {hasActiveShift ? (
             <>
-              <Button
-                variant="outlined"
-                startIcon={<ReissueIcon />}
-                onClick={() => setReissueModalOpen(true)}
-                disabled={reissueMutation.isPending}
-                sx={{
-                  borderColor: 'rgba(234, 179, 8, 0.4)',
-                  color: '#FACC15',
-                  '&:hover': { borderColor: '#FACC15', bgcolor: 'rgba(234, 179, 8, 0.1)' },
-                }}
-              >
-                Reissue Token (QR & Raw)
-              </Button>
-              <Button
-                variant="contained"
-                color="error"
-                startIcon={<StopIcon />}
-                onClick={() => handleCheckout(activeShift?.id)}
-                disabled={checkoutMutation.isPending}
-              >
-                Checkout & End Shift
-              </Button>
+              {canCreateShift && (
+                <Button
+                  variant="outlined"
+                  startIcon={<ReissueIcon />}
+                  onClick={() => setReissueModalOpen(true)}
+                  disabled={reissueMutation.isPending}
+                  sx={{
+                    borderColor: 'rgba(234, 179, 8, 0.4)',
+                    color: '#FACC15',
+                    '&:hover': { borderColor: '#FACC15', bgcolor: 'rgba(234, 179, 8, 0.1)' },
+                  }}
+                >
+                  Reissue Token (QR & Raw)
+                </Button>
+              )}
+              {canCheckoutShift && (
+                <Button
+                  variant="contained"
+                  color="error"
+                  startIcon={<StopIcon />}
+                  onClick={() => handleCheckout(activeShift?.id)}
+                  disabled={checkoutMutation.isPending}
+                >
+                  Checkout & End Shift
+                </Button>
+              )}
             </>
           ) : (
             <>
