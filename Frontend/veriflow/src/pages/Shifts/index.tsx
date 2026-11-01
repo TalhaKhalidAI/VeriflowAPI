@@ -4,14 +4,11 @@ import {
   Box,
   Card,
   CardContent,
+  Checkbox,
+  FormControlLabel,
   Typography,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
+
   Chip,
   Dialog,
   DialogTitle,
@@ -25,7 +22,6 @@ import {
   CircularProgress,
   Paper,
   Stack,
-  Switch,
   Tabs, Alert,
   Tab,
 } from '@mui/material';
@@ -46,7 +42,9 @@ import {
   useReissueActiveShiftMutation,
   useCheckoutShiftMutation,
 } from './query';
-import type { StartShiftResponse, ReissueShiftResponse } from './types';
+import type { StartShiftResponse, ReissueShiftResponse, ShiftRecord } from './types';
+import { Table, type TableColumn, type TableAction } from '../../components/Table';
+import { useKeysQuery } from '../Keys/query';
 import { ToastMsgs } from '../../api/toastUtils';
 import { useAuthStore } from '../../store/authStore';
 
@@ -57,6 +55,8 @@ export function ShiftsPage() {
 
   const { data: activeShift, isLoading: isLoadingActive } = useActiveShiftQuery();
   const { data: shiftsData, isLoading: isLoadingShifts } = useShiftsQuery();
+  const { data: keysData } = useKeysQuery('active');
+  const keys = keysData?.items || [];
 
   const startShiftMutation = useStartShiftMutation();
   const reissueMutation = useReissueActiveShiftMutation();
@@ -70,18 +70,27 @@ export function ShiftsPage() {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [tokenModalTab, setTokenModalTab] = useState<number>(0);
 
-  // Start Form
+  // Start Form (both include_rules and qr_only unchecked by default)
   const [startForm, setStartForm] = useState({
+    key_id: '',
     duration_hours: 8,
     device_id: 'SCANNER-MOBILE-01',
-    include_rules: true,
+    include_rules: false,
+    qr_only: false,
     target_user_id: '',
   });
 
-  // Reissue Form
+  // Reissue Form (both include_rules and qr_only unchecked by default)
   const [reissueForm, setReissueForm] = useState({
-    include_rules: true,
+    include_rules: false,
+    qr_only: false,
     target_user_id: '',
+  });
+
+  // Result mode tracking
+  const [resultMode, setResultMode] = useState({
+    qr_only: false,
+    include_rules: false,
   });
 
   const handleCopy = (text: string, label: string) => {
@@ -103,35 +112,56 @@ export function ShiftsPage() {
   };
 
   const handleStartSubmit = async () => {
-    const res = await startShiftMutation.mutateAsync({
+    const isQr = startForm.qr_only;
+    const hasRules = startForm.include_rules;
+    setResultMode({ qr_only: isQr, include_rules: hasRules });
+
+    const res: any = await startShiftMutation.mutateAsync({
       payload: {
+        key_id: startForm.key_id ? startForm.key_id : undefined,
         duration_hours: startForm.duration_hours,
         device_id: startForm.device_id,
-        include_rules: startForm.include_rules,
+        include_rules: hasRules,
         target_user_id: startForm.target_user_id ? Number(startForm.target_user_id) : undefined,
       },
-      qrOnly: false,
+      qrOnly: isQr,
     });
     setStartModalOpen(false);
     setTokenResult(res);
-    setTokenModalTab(0);
-    if (res.shift_token) {
-      await generateQRCode(res.shift_token);
+    setTokenModalTab(isQr ? 0 : 1);
+    if (isQr) {
+      if (res?.qrBlobUrl) {
+        setQrCodeDataUrl(res.qrBlobUrl);
+      } else if (res?.shift_token) {
+        await generateQRCode(res.shift_token);
+      }
+    } else {
+      setQrCodeDataUrl(null);
     }
     setTokenModalOpen(true);
   };
 
   const handleReissueSubmit = async () => {
-    const res = await reissueMutation.mutateAsync({
-      includeRules: reissueForm.include_rules,
-      qrOnly: false,
+    const isQr = reissueForm.qr_only;
+    const hasRules = reissueForm.include_rules;
+    setResultMode({ qr_only: isQr, include_rules: hasRules });
+
+    const res: any = await reissueMutation.mutateAsync({
+      includeRules: hasRules,
+      qrOnly: isQr,
       targetUserId: reissueForm.target_user_id ? Number(reissueForm.target_user_id) : undefined,
     });
     setReissueModalOpen(false);
     setTokenResult(res);
-    setTokenModalTab(0);
-    if (res.shift_token) {
-      await generateQRCode(res.shift_token);
+    setTokenModalTab(isQr ? 0 : 1);
+    if (isQr) {
+      if (res?.qrBlobUrl) {
+        setQrCodeDataUrl(res.qrBlobUrl);
+      } else if (res?.shift_token) {
+        await generateQRCode(res.shift_token);
+      }
+    } else {
+      setQrCodeDataUrl(null);
     }
     setTokenModalOpen(true);
   };
@@ -152,6 +182,88 @@ export function ShiftsPage() {
 
   const shifts = shiftsData?.items || [];
   const hasActiveShift = Boolean(activeShift && activeShift.status === 'active');
+
+  const shiftColumns: TableColumn<ShiftRecord>[] = [
+    {
+      key: 'user_id',
+      label: 'Shift / User',
+      render: (_, s) => (
+        <Box>
+          <Typography variant="body2" fontWeight={600} sx={{ color: '#F8FAFC' }}>
+            User #{s.user_id}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#64748B', fontFamily: 'monospace' }}>
+            {s.id.slice(0, 8)}...
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      key: 'device_id',
+      label: 'Device ID',
+      render: (_, s) => (
+        <Typography variant="body2" sx={{ color: '#E2E8F0', fontFamily: 'monospace' }}>
+          {s.device_id || 'DEFAULT'}
+        </Typography>
+      ),
+    },
+    {
+      key: 'key_id',
+      label: 'Key ID',
+      render: (_, s) => (
+        <Typography variant="caption" sx={{ color: '#38BDF8', fontFamily: 'monospace' }}>
+          {s.key_id ? s.key_id.slice(0, 10) : 'N/A'}
+        </Typography>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (_, s) => (
+        <Chip
+          label={s.status.toUpperCase()}
+          size="small"
+          color={s.status === 'active' ? 'success' : 'default'}
+          sx={{ fontWeight: 700, fontSize: 11 }}
+        />
+      ),
+    },
+    {
+      key: 'started_at',
+      label: 'Timing',
+      render: (_, s) => (
+        <Box>
+          <Typography variant="caption" sx={{ color: '#94A3B8', display: 'block' }}>
+            Start: {s.started_at ? new Date(s.started_at).toLocaleTimeString() : 'N/A'}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#64748B', display: 'block' }}>
+            End: {s.ended_at ? new Date(s.ended_at).toLocaleTimeString() : 'In Progress'}
+          </Typography>
+        </Box>
+      ),
+    },
+  ];
+
+  const shiftActions: TableAction<ShiftRecord>[] = [
+    {
+      label: 'Checkout',
+      variant: 'error',
+      disabled: (s) => s.status !== 'active',
+      onClick: (s) => handleCheckout(s.id),
+      render: (s) =>
+        s.status === 'active' ? (
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            onClick={() => handleCheckout(s.id)}
+            sx={{ py: 0.25, px: 1, fontSize: 11 }}
+          >
+            Checkout
+          </Button>
+        ) : null,
+    },
+  ];
 
   return (
     <Box sx={{ maxWidth: 1400, mx: 'auto', p: { xs: 2, sm: 3 } }}>
@@ -312,93 +424,18 @@ export function ShiftsPage() {
       )}
 
       {/* Shifts History Table */}
-      <Card sx={{ bgcolor: '#0B132B', border: '1px solid #1E293B', borderRadius: 3 }}>
-        <CardContent sx={{ p: 0 }}>
-          <TableContainer>
-            <Table>
-              <TableHead sx={{ bgcolor: '#07111D' }}>
-                <TableRow>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Shift / User</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Device ID</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Key ID</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Status</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Timing</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600, textAlign: 'right' }}>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {isLoadingShifts ? (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                      <CircularProgress color="primary" />
-                    </TableCell>
-                  </TableRow>
-                ) : shifts.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 6, color: '#94A3B8' }}>
-                      No shift records found.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  shifts.map((s) => {
-                    const isActive = s.status === 'active';
-                    return (
-                      <TableRow key={s.id} sx={{ '&:hover': { bgcolor: '#0D1B3E' } }}>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight={600} sx={{ color: '#F8FAFC' }}>
-                            User #{s.user_id}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: '#64748B', fontFamily: 'monospace' }}>
-                            {s.id.slice(0, 8)}...
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ color: '#E2E8F0', fontFamily: 'monospace' }}>
-                            {s.device_id || 'DEFAULT'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="caption" sx={{ color: '#38BDF8', fontFamily: 'monospace' }}>
-                            {s.key_id ? s.key_id.slice(0, 10) : 'N/A'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={s.status.toUpperCase()}
-                            size="small"
-                            color={isActive ? 'success' : 'default'}
-                            sx={{ fontWeight: 700, fontSize: 11 }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="caption" sx={{ color: '#94A3B8', display: 'block' }}>
-                            Start: {s.started_at ? new Date(s.started_at).toLocaleTimeString() : 'N/A'}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: '#64748B', display: 'block' }}>
-                            End: {s.ended_at ? new Date(s.ended_at).toLocaleTimeString() : 'In Progress'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          {isActive && (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="error"
-                              onClick={() => handleCheckout(s.id)}
-                            >
-                              Checkout
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+      <Table<ShiftRecord>
+        columns={shiftColumns}
+        data={shifts}
+        rowKey="id"
+        isLoading={isLoadingShifts}
+        emptyMessage="No shift records found."
+        actions={shiftActions}
+        showSearch={true}
+        searchPlaceholder="Search shifts by user or device..."
+        showPagination={true}
+        itemsPerPage={10}
+      />
 
       {/* START SHIFT MODAL */}
       <Dialog open={startModalOpen} onClose={() => setStartModalOpen(false)} maxWidth="sm" fullWidth>
@@ -407,6 +444,25 @@ export function ShiftsPage() {
           <Typography variant="body2" sx={{ color: '#94A3B8', mt: 1 }}>
             Initiates an authenticated session and issues a scoped <code>shift_token</code> JWT scannable from the screen.
           </Typography>
+
+          <TextField
+            select
+            fullWidth
+            size="small"
+            label="Cryptographic Signing Key (key_id)"
+            value={startForm.key_id}
+            onChange={(e) => setStartForm({ ...startForm, key_id: e.target.value })}
+            helperText="Select which asymmetric RS256 key signs this shift token (Defaults to primary active key if not specified)"
+          >
+            <MenuItem value="">
+              <em>Default Primary Active Key (Auto-detect)</em>
+            </MenuItem>
+            {keys.map((k) => (
+              <MenuItem key={k.id} value={k.id}>
+                🔑 {k.name} (kid: {k.kid}) {k.status === 'active' ? '• Active' : `• ${k.status}`}
+              </MenuItem>
+            ))}
+          </TextField>
 
           <FormControl fullWidth size="small">
             <InputLabel>Shift Duration</InputLabel>
@@ -441,20 +497,61 @@ export function ShiftsPage() {
             />
           )}
 
-          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 1 }}>
-            <Switch
-              checked={startForm.include_rules}
-              onChange={(e) => setStartForm({ ...startForm, include_rules: e.target.checked })}
+          {/* Shift Parameter Checkboxes */}
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              bgcolor: 'rgba(7, 17, 29, 0.7)',
+              border: '1px solid #1E293B',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1.5,
+              mt: 1,
+            }}
+          >
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={startForm.include_rules}
+                  onChange={(e) => setStartForm({ ...startForm, include_rules: e.target.checked })}
+                  size="small"
+                  sx={{ color: '#64748B', '&.Mui-checked': { color: '#38BDF8' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
+                    Embed Active Inventory Rules (<code>include_rules</code>)
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#94A3B8', display: 'block' }}>
+                    If true (checked), embeds active inventory rules into the shift token. If false (unchecked), token is minted without rules.
+                  </Typography>
+                </Box>
+              }
             />
-            <Box>
-              <Typography variant="body2" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
-                Embed Active Inventory Rules
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                Enables mobile scanner to validate products offline without constant Wi-Fi connectivity.
-              </Typography>
-            </Box>
-          </Stack>
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={startForm.qr_only}
+                  onChange={(e) => setStartForm({ ...startForm, qr_only: e.target.checked })}
+                  size="small"
+                  sx={{ color: '#64748B', '&.Mui-checked': { color: '#F59E0B' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
+                    Direct Scannable QR Image (<code>qr_only</code>)
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#94A3B8', display: 'block' }}>
+                    If checked (true), returns the QR code image (PNG) of the shift token directly to scan on screen. If false (unchecked), returns raw JSON data.
+                  </Typography>
+                </Box>
+              }
+            />
+          </Box>
         </DialogContent>
         <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
           <Button onClick={() => setStartModalOpen(false)} sx={{ color: '#94A3B8' }}>
@@ -492,20 +589,61 @@ export function ShiftsPage() {
             />
           )}
 
-          <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Switch
-              checked={reissueForm.include_rules}
-              onChange={(e) => setReissueForm({ ...reissueForm, include_rules: e.target.checked })}
+          {/* Reissue Parameter Checkboxes */}
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              bgcolor: 'rgba(7, 17, 29, 0.7)',
+              border: '1px solid #1E293B',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1.5,
+              mt: 1,
+            }}
+          >
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={reissueForm.include_rules}
+                  onChange={(e) => setReissueForm({ ...reissueForm, include_rules: e.target.checked })}
+                  size="small"
+                  sx={{ color: '#64748B', '&.Mui-checked': { color: '#38BDF8' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
+                    Embed Active Inventory Rules (<code>include_rules</code>)
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#94A3B8', display: 'block' }}>
+                    If checked (true), embeds active inventory rules into the reissued shift token. If false (unchecked), omits rules for a lighter token.
+                  </Typography>
+                </Box>
+              }
             />
-            <Box>
-              <Typography variant="body2" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
-                Embed Active Inventory Rules
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                Embed current rules inside token payload for offline scanner verification.
-              </Typography>
-            </Box>
-          </Stack>
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={reissueForm.qr_only}
+                  onChange={(e) => setReissueForm({ ...reissueForm, qr_only: e.target.checked })}
+                  size="small"
+                  sx={{ color: '#64748B', '&.Mui-checked': { color: '#F59E0B' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
+                    Direct Scannable QR Image (<code>qr_only</code>)
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#94A3B8', display: 'block' }}>
+                    If checked (true), returns the QR code image (PNG) of the shift token directly to scan on screen. If false (unchecked), returns raw JSON data.
+                  </Typography>
+                </Box>
+              }
+            />
+          </Box>
         </DialogContent>
         <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
           <Button onClick={() => setReissueModalOpen(false)} sx={{ color: '#94A3B8' }}>
@@ -522,20 +660,20 @@ export function ShiftsPage() {
         </DialogActions>
       </Dialog>
 
-      {/* SHIFT TOKEN MODAL: SCANNABLE QR & RAW FORM */}
+      {/* SHIFT TOKEN MODAL: CONDITIONAL QR & RAW FORM */}
       <Dialog open={tokenModalOpen} onClose={() => setTokenModalOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ bgcolor: '#0B132B', color: '#F8FAFC', pb: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <QrCodeIcon sx={{ color: '#FACC15' }} />
-          Shift Authorization Credential
+          {resultMode.qr_only ? <QrCodeIcon sx={{ color: '#FACC15' }} /> : <ShiftIcon sx={{ color: '#38BDF8' }} />}
+          {resultMode.qr_only ? 'Shift Authorization QR Code' : 'Shift Authorization Token Credential'}
         </DialogTitle>
         <Box sx={{ borderBottom: 1, borderColor: '#1E293B', bgcolor: '#0B132B', px: 3 }}>
           <Tabs value={tokenModalTab} onChange={(_, val) => setTokenModalTab(val)}>
-            <Tab label="Scannable QR Code" />
-            <Tab label="Raw JWT Token String" />
+            {resultMode.qr_only && <Tab label="Scannable QR Code" value={0} />}
+            <Tab label="Raw JWT Token String" value={1} />
           </Tabs>
         </Box>
         <DialogContent sx={{ bgcolor: '#0B132B', pt: 3 }}>
-          {tokenModalTab === 0 && (
+          {tokenModalTab === 0 && resultMode.qr_only && (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2.5 }}>
               <Typography variant="body2" sx={{ color: '#94A3B8', textAlign: 'center' }}>
                 Point the Android scanner camera or mobile barcode reader directly at this QR code to login.
@@ -562,20 +700,44 @@ export function ShiftsPage() {
                 >
                   Download QR Image (PNG)
                 </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<CopyIcon />}
-                  onClick={() => handleCopy(tokenResult?.shift_token || '', 'Shift Token')}
-                  sx={{ color: '#FACC15', borderColor: '#FACC15' }}
-                >
-                  Copy Token String
-                </Button>
+                {tokenResult?.shift_token ? (
+                  <Button
+                    variant="outlined"
+                    startIcon={<CopyIcon />}
+                    onClick={() => handleCopy(tokenResult.shift_token || '', 'Shift Token')}
+                    sx={{ color: '#FACC15', borderColor: '#FACC15' }}
+                  >
+                    Copy Token String
+                  </Button>
+                ) : null}
               </Stack>
             </Box>
           )}
 
-          {tokenModalTab === 1 && (
-            <Stack spacing={2}>
+          {(tokenModalTab === 1 || !resultMode.qr_only) && (
+            <Stack spacing={2.5}>
+              {/* Rules Status Banner */}
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: resultMode.include_rules ? 'rgba(56, 189, 248, 0.1)' : 'rgba(100, 116, 139, 0.1)',
+                  border: `1px solid ${resultMode.include_rules ? 'rgba(56, 189, 248, 0.3)' : 'rgba(100, 116, 139, 0.2)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Typography variant="body2" sx={{ color: resultMode.include_rules ? '#38BDF8' : '#94A3B8', fontWeight: 600 }}>
+                  Active Inventory Rules: {resultMode.include_rules ? 'Embedded in token payload' : 'Omitted (Minted without rules)'}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={resultMode.include_rules ? 'Rules Included' : 'No Rules'}
+                  color={resultMode.include_rules ? 'info' : 'default'}
+                />
+              </Box>
+
               <Typography variant="body2" sx={{ color: '#94A3B8' }}>
                 Raw RS256 Shift JWT token string. Can be pasted into headers or configuration payloads:
               </Typography>
@@ -600,22 +762,24 @@ export function ShiftsPage() {
                     m: 0,
                   }}
                 >
-                  {tokenResult?.shift_token}
+                  {tokenResult?.shift_token || (tokenResult?.isQrBlob ? '(Token issued in direct QR PNG mode)' : 'No token string')}
                 </Typography>
               </Paper>
 
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="caption" sx={{ color: '#64748B' }}>
-                  Shift ID: {tokenResult?.shift?.id}
+                  Shift ID: {tokenResult?.shift?.id || 'Active'}
                 </Typography>
-                <Button
-                  variant="outlined"
-                  startIcon={<CopyIcon />}
-                  onClick={() => handleCopy(tokenResult?.shift_token || '', 'Raw JWT Token')}
-                  sx={{ color: '#38BDF8', borderColor: '#38BDF8' }}
-                >
-                  Copy Raw Token
-                </Button>
+                {tokenResult?.shift_token && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<CopyIcon />}
+                    onClick={() => handleCopy(tokenResult.shift_token || '', 'Raw JWT Token')}
+                    sx={{ color: '#38BDF8', borderColor: '#38BDF8' }}
+                  >
+                    Copy Raw Token
+                  </Button>
+                )}
               </Box>
             </Stack>
           )}

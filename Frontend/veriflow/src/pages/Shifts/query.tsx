@@ -41,8 +41,23 @@ export const useShiftsQuery = () => {
 export const useStartShiftMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ payload, qrOnly = false }: { payload: StartShiftPayload; qrOnly?: boolean }) => {
-      return await http.post<StartShiftResponse>(`/shifts/start?qr_only=${qrOnly}`, payload);
+    mutationFn: async ({ payload, qrOnly = false }: { payload: StartShiftPayload; qrOnly?: boolean }): Promise<StartShiftResponse> => {
+      const incRules = payload.include_rules ?? false;
+      if (qrOnly) {
+        const blob = await http.post<Blob>(
+          `/shifts/start?qr_only=true&include_rules=${incRules}`,
+          payload,
+          { responseType: 'blob' }
+        );
+        return {
+          isQrBlob: true,
+          qrBlobUrl: URL.createObjectURL(blob),
+          shift: null,
+          shift_token: '',
+          expires_at: '',
+        };
+      }
+      return await http.post<StartShiftResponse>(`/shifts/start?qr_only=false&include_rules=${incRules}`, payload);
     },
     onSuccess: () => {
       ToastMsgs.success('Work shift started successfully!');
@@ -58,17 +73,27 @@ export const useReissueActiveShiftMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
-      includeRules = true,
+      includeRules = false,
       qrOnly = false,
       targetUserId,
     }: {
       includeRules?: boolean;
       qrOnly?: boolean;
       targetUserId?: number;
-    }) => {
+    }): Promise<ReissueShiftResponse> => {
       let url = `/shifts/active/reissue?include_rules=${includeRules}&qr_only=${qrOnly}`;
       if (targetUserId) {
         url += `&target_user_id=${targetUserId}`;
+      }
+      if (qrOnly) {
+        const blob = await http.post<Blob>(url, {}, { responseType: 'blob' });
+        return {
+          isQrBlob: true,
+          qrBlobUrl: URL.createObjectURL(blob),
+          shift: null,
+          shift_token: '',
+          expires_at: '',
+        };
       }
       return await http.post<ReissueShiftResponse>(url);
     },

@@ -1,31 +1,21 @@
 import { useState } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
+
   Chip,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
   CircularProgress,
-  Tooltip,
   Paper,
   Stack,
   Alert,
 } from '@mui/material';
 import {
-  QrCodeScannerRounded as ScansIcon,
   CheckCircleRounded as CheckIcon,
   CancelRounded as CancelIcon,
   VisibilityRounded as VisibilityIcon,
@@ -33,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { useScansQuery, useVerifyTokenDirectMutation } from './query';
 import type { ScanRecord } from './types';
+import { Table, type TableColumn, type TableAction } from '../../components/Table';
 import { ToastMsgs } from '../../api/toastUtils';
 
 export function ScansPage() {
@@ -56,6 +47,102 @@ export function ScansPage() {
   const scans = scansData?.items || [];
   const validCount = scans.filter((s) => s.status === 'valid').length;
   const invalidCount = scans.filter((s) => s.status !== 'valid').length;
+
+  const scanColumns: TableColumn<ScanRecord>[] = [
+    {
+      key: 'status',
+      label: 'Verification',
+      render: (_, s) => {
+        const isValid = s.status === 'valid';
+        return (
+          <Chip
+            icon={isValid ? <CheckIcon /> : <CancelIcon />}
+            size="small"
+            label={s.status.toUpperCase()}
+            sx={{
+              fontWeight: 700,
+              fontSize: '0.68rem',
+              bgcolor: isValid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+              color: isValid ? '#34D399' : '#F87171',
+              border: `1px solid ${isValid ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+              '& .MuiChip-icon': {
+                color: isValid ? '#34D399' : '#F87171',
+              },
+            }}
+          />
+        );
+      },
+    },
+    {
+      key: 'id',
+      label: 'Scan ID',
+      render: (_, s) => (
+        <Typography variant="body2" fontWeight={700} sx={{ color: '#F8FAFC', fontFamily: 'monospace' }}>
+          #{s.id}
+        </Typography>
+      ),
+    },
+    {
+      key: 'sku',
+      label: 'Detected SKU / Payload',
+      render: (_, s) => {
+        const sku =
+          s.jwt_scanned?.sku ||
+          s.jwt_scanned?.product_id ||
+          s.jwt_scanned?.batch_no ||
+          'TAG-PAYLOAD';
+        return (
+          <Box>
+            <Typography variant="body2" fontWeight={600} sx={{ color: '#E2E8F0' }}>
+              {String(sku)}
+            </Typography>
+            {s.reason && (
+              <Typography variant="caption" sx={{ color: '#F87171', display: 'block' }}>
+                Violation: {s.reason}
+              </Typography>
+            )}
+          </Box>
+        );
+      },
+    },
+    {
+      key: 'shift_id',
+      label: 'Shift Binding',
+      render: (_, s) => (
+        <Typography variant="caption" sx={{ color: '#60A5FA', fontFamily: 'monospace' }}>
+          {s.shift_id.slice(0, 12)}...
+        </Typography>
+      ),
+    },
+    {
+      key: 'scanned_at',
+      label: 'Timestamps',
+      render: (_, s) => (
+        <Box>
+          <Typography variant="caption" sx={{ color: '#94A3B8', display: 'block' }}>
+            Captured: {s.scanned_at ? new Date(s.scanned_at).toLocaleString() : 'N/A'}
+          </Typography>
+          {s.synced_at && (
+            <Typography variant="caption" sx={{ color: '#64748B', display: 'block' }}>
+              Synced: {new Date(s.synced_at).toLocaleTimeString()}
+            </Typography>
+          )}
+        </Box>
+      ),
+    },
+  ];
+
+  const scanActions: TableAction<ScanRecord>[] = [
+    {
+      icon: <VisibilityIcon fontSize="small" />,
+      title: 'Inspect Decoded Claims',
+      variant: 'primary',
+      onClick: (s) => {
+        setSelectedScan(s);
+        setInspectModalOpen(true);
+      },
+    },
+  ];
 
   return (
     <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
@@ -146,143 +233,18 @@ export function ScansPage() {
       </Stack>
 
       {/* Scans Table */}
-      <Card
-        sx={{
-          bgcolor: '#0B132B',
-          borderRadius: 3,
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-        }}
-      >
-        <CardContent sx={{ p: 0 }}>
-          <TableContainer component={Paper} sx={{ bgcolor: 'transparent', boxShadow: 'none' }}>
-            <Table>
-              <TableHead sx={{ bgcolor: 'rgba(255, 255, 255, 0.03)' }}>
-                <TableRow>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>VERIFICATION</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>SCAN ID</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>DETECTED SKU / PAYLOAD</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>SHIFT BINDING</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>TIMESTAMPS</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }} align="right">
-                    DETAILS
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                      <CircularProgress size={32} sx={{ color: '#3B82F6' }} />
-                      <Typography variant="body2" sx={{ color: '#94A3B8', mt: 1.5 }}>
-                        Loading scan history telemetry...
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : scans.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                      <ScansIcon sx={{ fontSize: 44, color: '#475569', mb: 1 }} />
-                      <Typography variant="subtitle1" fontWeight={600} sx={{ color: '#94A3B8' }}>
-                        No scans logged yet
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: '#64748B' }}>
-                        Scans made by mobile devices with active shift tokens will stream here automatically.
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  scans.map((s) => {
-                    const isValid = s.status === 'valid';
-                    const sku =
-                      s.jwt_scanned?.sku ||
-                      s.jwt_scanned?.product_id ||
-                      s.jwt_scanned?.batch_no ||
-                      'TAG-PAYLOAD';
-
-                    return (
-                      <TableRow
-                        key={s.id}
-                        sx={{
-                          borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                          '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.02)' },
-                        }}
-                      >
-                        <TableCell>
-                          <Chip
-                            icon={isValid ? <CheckIcon /> : <CancelIcon />}
-                            size="small"
-                            label={s.status.toUpperCase()}
-                            sx={{
-                              fontWeight: 700,
-                              fontSize: '0.68rem',
-                              bgcolor: isValid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                              color: isValid ? '#34D399' : '#F87171',
-                              border: `1px solid ${isValid ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                              '& .MuiChip-icon': {
-                                color: isValid ? '#34D399' : '#F87171',
-                              },
-                            }}
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <Typography variant="body2" fontWeight={700} sx={{ color: '#F8FAFC', fontFamily: 'monospace' }}>
-                            #{s.id}
-                          </Typography>
-                        </TableCell>
-
-                        <TableCell>
-                          <Typography variant="body2" fontWeight={600} sx={{ color: '#E2E8F0' }}>
-                            {String(sku)}
-                          </Typography>
-                          {s.reason && (
-                            <Typography variant="caption" sx={{ color: '#F87171', display: 'block' }}>
-                              Violation: {s.reason}
-                            </Typography>
-                          )}
-                        </TableCell>
-
-                        <TableCell>
-                          <Typography variant="caption" sx={{ color: '#60A5FA', fontFamily: 'monospace' }}>
-                            {s.shift_id.slice(0, 12)}...
-                          </Typography>
-                        </TableCell>
-
-                        <TableCell>
-                          <Typography variant="caption" sx={{ color: '#94A3B8', display: 'block' }}>
-                            Captured: {s.scanned_at ? new Date(s.scanned_at).toLocaleString() : 'N/A'}
-                          </Typography>
-                          {s.synced_at && (
-                            <Typography variant="caption" sx={{ color: '#64748B', display: 'block' }}>
-                              Synced: {new Date(s.synced_at).toLocaleTimeString()}
-                            </Typography>
-                          )}
-                        </TableCell>
-
-                        <TableCell align="right">
-                          <Tooltip title="Inspect Decoded Claims">
-                            <IconButton
-                              size="small"
-                              onClick={() => {
-                                setSelectedScan(s);
-                                setInspectModalOpen(true);
-                              }}
-                              sx={{ color: '#60A5FA' }}
-                            >
-                              <VisibilityIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+      <Table<ScanRecord>
+        columns={scanColumns}
+        data={scans}
+        rowKey="id"
+        isLoading={isLoading}
+        emptyMessage="No scans logged yet."
+        actions={scanActions}
+        showSearch={true}
+        searchPlaceholder="Search scans by ID, SKU, or shift..."
+        showPagination={true}
+        itemsPerPage={10}
+      />
 
       {/* Modal: Inspect Decoded Claims */}
       <Dialog

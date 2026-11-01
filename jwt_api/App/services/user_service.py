@@ -12,6 +12,7 @@ from fastapi import UploadFile
 from App.core.exceptions import DomainError, UserNotFoundError,ValidationError,PermissionDeniedError
 from App.repository.UserRepository import UserRepository
 from App.core.settings import settings
+from App.schemas.AuthScheema import UserResponse
 logger = get_core_logger(__name__)
 
 class UserService:
@@ -61,18 +62,41 @@ class UserService:
             raise UserNotFoundError(f"User {user_id} not found")
         return user
 
-    async def list_users(self, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+    async def list_users(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        search: Optional[str] = None,
+        show_disabled: bool = True,
+        show_deleted: bool = False,
+        show_permissions: bool = True,
+    ):
         """Return paginated user listings for admin use."""
         repo = UserRepository(self.db)
         users = await repo.search_users(
             skip=skip,
             limit=limit,
             active_only=False,
+            show_disabled=show_disabled,
+            show_deleted=show_deleted,
             search=search,
         )
-        total = await repo.count_users(active_only=False)
+        total = await repo.count_users(
+            active_only=False,
+            show_disabled=show_disabled,
+            show_deleted=show_deleted,
+            search=search,
+        )
+
+        user_list = []
+        for user in users:
+            u_dict = UserResponse.model_validate(user).model_dump()
+            if not show_permissions:
+                u_dict["permissions"] = None
+            user_list.append(u_dict)
+
         return {
-            "users": users,
+            "users": user_list,
             "total": total,
             "skip": skip,
             "limit": limit,

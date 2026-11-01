@@ -2,16 +2,12 @@
 import React, { useState } from 'react';
 import {
   Box,
+  Stack,
   Typography,
   Button,
   Card,
   CardContent,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
+
   Chip,
   IconButton,
   Tooltip,
@@ -23,7 +19,6 @@ import {
   MenuItem,
   Tabs,
   Tab,
-  CircularProgress,
   FormControlLabel,
   Checkbox,
   Grid,
@@ -45,6 +40,7 @@ import {
   RefreshRounded as RefreshCw,
   GroupRounded as Users,
   AdminPanelSettingsRounded as Settings,
+  OpenInNewRounded as OpenIcon,
 } from "@mui/icons-material";
 import {
   useAdminUsersQuery,
@@ -64,7 +60,9 @@ import {
 import type { AdminUser } from './types';
 import { useAuthStore } from '../../store/authStore';
 import { useMFAStatusQuery } from '../Security/query';
+import { ToastMsgs } from '../../api/toastUtils';
 import { OtpBoxesInput } from '../../components/OtpModal';
+import { Table, type TableColumn } from '../../components/Table';
 import { CloseRounded as CloseIcon } from '@mui/icons-material';
 
 export const AdminPage: React.FC = () => {
@@ -72,7 +70,15 @@ export const AdminPage: React.FC = () => {
   const { data: mfaStatus } = useMFAStatusQuery();
   const isMFAEnabled = Boolean(user?.mfa_enabled || mfaStatus?.mfa_enabled);
 
-  const { data: users = [], isLoading: usersLoading, refetch: refetchUsers } = useAdminUsersQuery();
+  const [showDisabled, setShowDisabled] = useState(true);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [showPermissions, setShowPermissions] = useState(true);
+
+  const { data: users = [], isLoading: usersLoading, refetch: refetchUsers } = useAdminUsersQuery({
+    show_disabled: showDisabled,
+    show_deleted: showDeleted,
+    show_permissions: showPermissions,
+  });
   const { data: allPermissions = [] } = useAllPermissionsQuery();
 
   const [activeTab, setActiveTab] = useState<number>(0);
@@ -93,6 +99,7 @@ export const AdminPage: React.FC = () => {
   const [tempTokenOtp, setTempTokenOtp] = useState('');
   const [issuedTempToken, setIssuedTempToken] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const [autoKillDialogOpen, setAutoKillDialogOpen] = useState(false);
   const [autoKillOtp, setAutoKillOtp] = useState('');
@@ -217,6 +224,157 @@ export const AdminPage: React.FC = () => {
     setTimeout(() => setCopiedToken(false), 2000);
   };
 
+  const userColumns: TableColumn<AdminUser>[] = React.useMemo(() => {
+    const cols: TableColumn<AdminUser>[] = [
+    {
+      key: 'id',
+      label: 'ID',
+      width: 70,
+      render: (_, u) => (
+        <Typography variant="body2" sx={{ color: '#64748B', fontFamily: 'monospace' }}>
+          #{u.id}
+        </Typography>
+      ),
+    },
+    {
+      key: 'name',
+      label: 'User / Email',
+      render: (_, u) => (
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: '#F8FAFC' }}>
+            {u.name || 'Unnamed'}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#94A3B8' }}>
+            {u.email}
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      key: 'role',
+      label: 'Role',
+      render: (_, u) => (
+        <Chip
+          label={u.role.toUpperCase()}
+          size="small"
+          color={u.role === 'admin' ? 'secondary' : 'default'}
+          sx={{ fontWeight: 700, fontSize: 11 }}
+        />
+      ),
+    },
+    {
+      key: 'disabled',
+      label: 'Status',
+      render: (_, u) => (
+        u.is_deleted ? (
+          <Chip label="Deleted" size="small" color="error" />
+        ) : u.disabled ? (
+          <Chip label="Disabled" size="small" color="warning" />
+        ) : (
+          <Chip label="Active" size="small" color="success" />
+        )
+      ),
+    },
+    {
+      key: 'mfa_enabled',
+      label: 'MFA',
+      render: (_, u) => (
+        u.mfa_enabled ? (
+          <Chip label={u.mfa_method?.toUpperCase() || 'MFA'} size="small" color="info" />
+        ) : (
+          <Typography variant="caption" sx={{ color: '#64748B' }}>
+            None
+          </Typography>
+        )
+      ),
+    },
+    ];
+
+    if (showPermissions) {
+      cols.push({
+        key: 'permissions',
+        label: 'Permissions',
+        render: (_, u) => {
+          const permCount = Object.keys(u.permissions || {}).length;
+          return (
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => handleOpenPermMatrix(u)}
+              sx={{ textTransform: 'none', color: '#38BDF8', fontSize: 12, p: 0 }}
+            >
+              {u.role === 'admin' ? 'Admin Full Access' : `${permCount} grants`}
+            </Button>
+          );
+        },
+      });
+    }
+
+    return cols;
+  }, [showPermissions]);
+
+  const renderUserActions = (u: AdminUser) => (
+    <Box sx={{ display: 'inline-flex', gap: 0.5, justifyContent: 'flex-end' }}>
+      <Tooltip title="Edit Profile">
+        <IconButton size="small" onClick={() => handleOpenEdit(u)} sx={{ color: '#94A3B8' }}>
+          <Edit fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Reset Password">
+        <IconButton size="small" onClick={() => handleOpenPassword(u)} sx={{ color: '#94A3B8' }}>
+          <Lock fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Issue Temp Token (2 min SLT)">
+        <IconButton size="small" onClick={() => handleOpenTempToken(u)} sx={{ color: '#F59E0B' }}>
+          <Clock fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      {u.disabled ? (
+        <Tooltip title="Enable Account">
+          <IconButton
+            size="small"
+            onClick={() => enableMutation.mutate({ userId: u.id })}
+            sx={{ color: '#10B981' }}
+          >
+            <UserCheck fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <Tooltip title="Disable Account">
+          <IconButton
+            size="small"
+            onClick={() => disableMutation.mutate({ userId: u.id })}
+            sx={{ color: '#EF4444' }}
+          >
+            <UserX fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
+      {u.is_deleted ? (
+        <Tooltip title="Restore Account">
+          <IconButton
+            size="small"
+            onClick={() => restoreMutation.mutate({ userId: u.id })}
+            sx={{ color: '#10B981' }}
+          >
+            <RotateCcw fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <Tooltip title="Delete Account">
+          <IconButton
+            size="small"
+            onClick={() => deleteMutation.mutate({ userId: u.id })}
+            sx={{ color: '#64748B', '&:hover': { color: '#EF4444' } }}
+          >
+            <Trash2 fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
+    </Box>
+  );
+
   return (
     <Box sx={{ p: 3, maxWidth: 1400, mx: 'auto' }}>
       {/* Header */}
@@ -266,143 +424,84 @@ export const AdminPage: React.FC = () => {
       {/* TAB 0: USERS LIST */}
       {activeTab === 0 && (
         <Card sx={{ bgcolor: '#0B132B', border: '1px solid #1E293B', borderRadius: 2 }}>
+          {/* Checkboxes Filter Bar */}
+          <Box
+            sx={{
+              p: 2,
+              px: 2.5,
+              borderBottom: '1px solid #1E293B',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 2,
+              bgcolor: 'rgba(11, 19, 43, 0.6)',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ color: '#94A3B8', fontWeight: 600 }}>
+              Display & Security Filters:
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap' }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={showDisabled}
+                    onChange={(e) => setShowDisabled(e.target.checked)}
+                    size="small"
+                    sx={{ color: '#64748B', '&.Mui-checked': { color: '#F59E0B' } }}
+                  />
+                }
+                label={
+                  <Typography variant="body2" sx={{ color: '#E2E8F0', fontSize: 13, fontWeight: 500 }}>
+                    Show Disabled
+                  </Typography>
+                }
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={showDeleted}
+                    onChange={(e) => setShowDeleted(e.target.checked)}
+                    size="small"
+                    sx={{ color: '#64748B', '&.Mui-checked': { color: '#EF4444' } }}
+                  />
+                }
+                label={
+                  <Typography variant="body2" sx={{ color: '#E2E8F0', fontSize: 13, fontWeight: 500 }}>
+                    Show Deleted
+                  </Typography>
+                }
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={showPermissions}
+                    onChange={(e) => setShowPermissions(e.target.checked)}
+                    size="small"
+                    sx={{ color: '#64748B', '&.Mui-checked': { color: '#38BDF8' } }}
+                  />
+                }
+                label={
+                  <Typography variant="body2" sx={{ color: '#E2E8F0', fontSize: 13, fontWeight: 500 }}>
+                    Show Permissions
+                  </Typography>
+                }
+              />
+            </Box>
+          </Box>
           <CardContent sx={{ p: 0 }}>
-            {usersLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}>
-                <CircularProgress color="primary" />
-              </Box>
-            ) : (
-              <TableContainer>
-                <Table>
-                  <TableHead sx={{ bgcolor: '#07111D' }}>
-                    <TableRow>
-                      <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>ID</TableCell>
-                      <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>User / Email</TableCell>
-                      <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Role</TableCell>
-                      <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Status</TableCell>
-                      <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>MFA</TableCell>
-                      <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Permissions</TableCell>
-                      <TableCell sx={{ color: '#94A3B8', fontWeight: 600, textAlign: 'right' }}>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {users.map((u) => {
-                      const permCount = Object.keys(u.permissions || {}).length;
-                      return (
-                        <TableRow key={u.id} sx={{ '&:hover': { bgcolor: '#0D1B3E' } }}>
-                          <TableCell sx={{ color: '#64748B', fontFamily: 'monospace' }}>#{u.id}</TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 600, color: '#F8FAFC' }}>
-                              {u.name || 'Unnamed'}
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                              {u.email}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              label={u.role.toUpperCase()}
-                              size="small"
-                              color={u.role === 'admin' ? 'secondary' : 'default'}
-                              sx={{ fontWeight: 700, fontSize: 11 }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {u.is_deleted ? (
-                              <Chip label="Deleted" size="small" color="error" />
-                            ) : u.disabled ? (
-                              <Chip label="Disabled" size="small" color="warning" />
-                            ) : (
-                              <Chip label="Active" size="small" color="success" />
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {u.mfa_enabled ? (
-                              <Chip label={u.mfa_method?.toUpperCase() || 'MFA'} size="small" color="info" />
-                            ) : (
-                              <Typography variant="caption" sx={{ color: '#64748B' }}>
-                                None
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              size="small"
-                              variant="text"
-                              onClick={() => handleOpenPermMatrix(u)}
-                              sx={{ textTransform: 'none', color: '#38BDF8', fontSize: 12 }}
-                            >
-                              {u.role === 'admin' ? 'Admin Full Access' : `${permCount} grants`}
-                            </Button>
-                          </TableCell>
-                          <TableCell sx={{ textAlign: 'right' }}>
-                            <Box sx={{ display: 'inline-flex', gap: 0.5 }}>
-                              <Tooltip title="Edit Profile">
-                                <IconButton size="small" onClick={() => handleOpenEdit(u)} sx={{ color: '#94A3B8' }}>
-                                  <Edit fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Reset Password">
-                                <IconButton size="small" onClick={() => handleOpenPassword(u)} sx={{ color: '#94A3B8' }}>
-                                  <Lock fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Issue Temp Token (2 min SLT)">
-                                <IconButton size="small" onClick={() => handleOpenTempToken(u)} sx={{ color: '#F59E0B' }}>
-                                  <Clock fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              {u.disabled ? (
-                                <Tooltip title="Enable Account">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => enableMutation.mutate({ userId: u.id })}
-                                    sx={{ color: '#10B981' }}
-                                  >
-                                    <UserCheck fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              ) : (
-                                <Tooltip title="Disable Account">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => disableMutation.mutate({ userId: u.id })}
-                                    sx={{ color: '#EF4444' }}
-                                  >
-                                    <UserX fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                              {u.is_deleted ? (
-                                <Tooltip title="Restore Account">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => restoreMutation.mutate({ userId: u.id })}
-                                    sx={{ color: '#10B981' }}
-                                  >
-                                    <RotateCcw fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              ) : (
-                                <Tooltip title="Delete Account">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => deleteMutation.mutate({ userId: u.id })}
-                                    sx={{ color: '#64748B', '&:hover': { color: '#EF4444' } }}
-                                  >
-                                    <Trash2 fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
+            <Table<AdminUser>
+              columns={userColumns}
+              data={users}
+              rowKey="id"
+              isLoading={usersLoading}
+              emptyMessage="No users found."
+              actionRenderer={renderUserActions}
+              showSearch={true}
+              searchPlaceholder="Search users by name, email, or role..."
+              showPagination={true}
+              itemsPerPage={10}
+            />
           </CardContent>
         </Card>
       )}
@@ -718,34 +817,119 @@ export const AdminPage: React.FC = () => {
           )}
 
           {issuedTempToken && (
-            <Paper sx={{ p: 2, bgcolor: '#07111D', border: '1px solid #1E293B', borderRadius: 1 }}>
-              <Typography variant="caption" sx={{ color: '#38BDF8', fontWeight: 700, display: 'block', mb: 1 }}>
-                Issued Short-Lived Token (Expires in 120s):
-              </Typography>
-              <Typography
-                variant="body2"
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Alert
+                severity="info"
                 sx={{
-                  fontFamily: 'monospace',
-                  wordBreak: 'break-all',
-                  color: '#A7F3D0',
-                  fontSize: 12,
-                  bgcolor: '#030712',
-                  p: 1.5,
-                  borderRadius: 1,
+                  bgcolor: 'rgba(56, 189, 248, 0.1)',
+                  color: '#38BDF8',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  borderRadius: 2,
+                  fontSize: '0.82rem',
                 }}
               >
-                {issuedTempToken}
-              </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={copiedToken ? <Check fontSize="small" /> : <Copy fontSize="small" />}
-                onClick={() => copyToClipboard(issuedTempToken)}
-                sx={{ mt: 1.5, color: '#38BDF8', borderColor: '#38BDF8' }}
-              >
-                {copiedToken ? 'Copied' : 'Copy Token'}
-              </Button>
-            </Paper>
+                Generated 2-minute SLT for <strong>{selectedUser?.name || 'User'} (#{selectedUser?.id})</strong> strictly authorized for{' '}
+                <strong>{tempTokenRestorePasswd ? 'Password Reset' : 'Account Restoration'}</strong>.
+              </Alert>
+
+              {/* Recovery URL with Current Host/IP */}
+              <Paper sx={{ p: 2, bgcolor: '#07111D', border: '1px solid #1E293B', borderRadius: 2 }}>
+                <Typography variant="caption" sx={{ color: '#38BDF8', fontWeight: 700, display: 'block', mb: 0.5 }}>
+                  Direct Recovery Link (Share with User):
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontFamily: 'monospace',
+                    wordBreak: 'break-all',
+                    color: '#60A5FA',
+                    fontSize: 12,
+                    bgcolor: '#030712',
+                    p: 1.5,
+                    borderRadius: 1,
+                    border: '1px solid #1E293B',
+                    mb: 1.5,
+                  }}
+                >
+                  {`${window.location.origin}/recovery?token=${encodeURIComponent(issuedTempToken)}`}
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={copiedLink ? <Check fontSize="small" /> : <Copy fontSize="small" />}
+                    onClick={() => {
+                      const link = `${window.location.origin}/recovery?token=${encodeURIComponent(issuedTempToken)}`;
+                      copyToClipboard(link);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                      ToastMsgs.success('Direct recovery link copied to clipboard!');
+                    }}
+                    sx={{
+                      background: 'linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%)',
+                      textTransform: 'none',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {copiedLink ? 'Link Copied!' : 'Copy Recovery Link'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<OpenIcon fontSize="small" />}
+                    onClick={() => {
+                      const link = `${window.location.origin}/recovery?token=${encodeURIComponent(issuedTempToken)}`;
+                      window.open(link, '_blank');
+                    }}
+                    sx={{
+                      color: '#38BDF8',
+                      borderColor: 'rgba(56, 189, 248, 0.4)',
+                      textTransform: 'none',
+                    }}
+                  >
+                    Open Link
+                  </Button>
+                </Stack>
+              </Paper>
+
+              {/* Raw Token Collapsible / Display */}
+              <Paper sx={{ p: 2, bgcolor: '#07111D', border: '1px solid #1E293B', borderRadius: 2 }}>
+                <Typography variant="caption" sx={{ color: '#94A3B8', fontWeight: 700, display: 'block', mb: 0.5 }}>
+                  Raw Temporary Token (Expires in 120s):
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontFamily: 'monospace',
+                    wordBreak: 'break-all',
+                    color: '#A7F3D0',
+                    fontSize: 11,
+                    bgcolor: '#030712',
+                    p: 1,
+                    borderRadius: 1,
+                    maxHeight: 65,
+                    overflowY: 'auto',
+                    mb: 1,
+                  }}
+                >
+                  {issuedTempToken}
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={copiedToken ? <Check fontSize="small" /> : <Copy fontSize="small" />}
+                  onClick={() => {
+                    copyToClipboard(issuedTempToken);
+                    setCopiedToken(true);
+                    setTimeout(() => setCopiedToken(false), 2000);
+                    ToastMsgs.success('Raw temporary token copied!');
+                  }}
+                  sx={{ color: '#94A3B8', borderColor: '#334155', textTransform: 'none' }}
+                >
+                  {copiedToken ? 'Copied' : 'Copy Raw Token'}
+                </Button>
+              </Paper>
+            </Box>
           )}
         </DialogContent>
         <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>

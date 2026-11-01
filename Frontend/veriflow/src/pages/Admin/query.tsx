@@ -14,48 +14,73 @@ import type {
   TempTokenResponse,
 } from './types';
 
-export const useAdminUsersQuery = () => {
-  return useQuery({
-    queryKey: ['admin', 'users'],
-    queryFn: async (): Promise<AdminUser[]> => {
-      // 1. Fetch user permissions mapping with info
-      const permData = await http.get<{
-        users: Record<string, { email: string; name: string; role: string; permissions: Record<string, boolean> }>;
-        pagination: { total: number };
-      }>('/admin/admin_access/users/permissions?include_user_info=true&limit=200');
+export interface UserQueryOptions {
+  show_disabled?: boolean;
+  show_deleted?: boolean;
+  show_permissions?: boolean;
+}
 
-      // 2. Fetch full user config accounts to capture statuses
+export const useAdminUsersQuery = (options: UserQueryOptions = {}) => {
+  const { show_disabled = true, show_deleted = false, show_permissions = true } = options;
+
+  return useQuery({
+    queryKey: ['admin', 'users', show_disabled, show_deleted, show_permissions],
+    queryFn: async (): Promise<AdminUser[]> => {
+      // 1. Fetch full user config accounts from GET /users/users_config/users
       let usersList: any[] = [];
       try {
-        const fullUsers = await http.get<{ users: any[] }>('/users/users_config/users?limit=200');
+        const fullUsers = await http.get<{ users: any[] }>(
+          `/users/users_config/users?limit=200&show_disabled=${show_disabled}&show_deleted=${show_deleted}&show_permissions=${show_permissions}`
+        );
         usersList = fullUsers?.users || [];
       } catch (err) {
-        console.warn('Could not load extended user statuses, using permissions listing', err);
+        console.warn('Could not load user accounts from users_config/users', err);
       }
 
-      const usersById: Record<number, any> = {};
-      usersList.forEach((u) => {
-        usersById[u.id] = u;
-      });
+      // 2. Fetch permissions mapping if requested
+      let permUsers: Record<string, any> = {};
+      if (show_permissions) {
+        try {
+          const permData = await http.get<{
+            users: Record<string, { email: string; name: string; role: string; permissions: Record<string, boolean> }>;
+          }>('/admin/admin_access/users/permissions?include_user_info=true&limit=200');
+          permUsers = permData.users || {};
+        } catch (e) {
+          console.warn('Could not load permissions mapping', e);
+        }
+      }
 
-      const list: AdminUser[] = Object.entries(permData.users || {}).map(([idStr, u]) => {
-        const numId = Number(idStr);
-        const full = usersById[numId] || {};
-        return {
-          id: numId,
-          email: u.email || full.email || '',
-          name: u.name || full.name || '',
-          role: u.role || full.user_role || full.role || 'user',
-          user_role: full.user_role || u.role,
-          disabled: Boolean(full.disabled),
-          is_deleted: Boolean(full.is_deleted),
-          permissions: u.permissions || full.permissions || {},
-          mfa_enabled: full.mfa_enabled,
-          mfa_method: full.mfa_method,
-        };
-      });
+      // If usersList was returned from /users/users_config/users, map directly
+      if (usersList.length > 0) {
+        return usersList.map((u: any) => {
+          const pInfo = permUsers[String(u.id)] || {};
+          return {
+            id: u.id,
+            email: u.email || pInfo.email || '',
+            name: u.name || pInfo.name || '',
+            role: u.user_role || pInfo.role || 'user',
+            user_role: u.user_role || pInfo.role || 'user',
+            disabled: Boolean(u.disabled),
+            is_deleted: Boolean(u.is_deleted),
+            permissions: show_permissions ? (u.permissions || pInfo.permissions || {}) : {},
+            mfa_enabled: Boolean(u.mfa_enabled),
+            mfa_method: u.mfa_method,
+          };
+        });
+      }
 
-      return list;
+      // Fallback if usersList is empty but permUsers exists
+      return Object.entries(permUsers).map(([idStr, u]: [string, any]) => ({
+        id: Number(idStr),
+        email: u.email || '',
+        name: u.name || '',
+        role: u.role || 'user',
+        user_role: u.role || 'user',
+        disabled: false,
+        is_deleted: false,
+        permissions: show_permissions ? (u.permissions || {}) : {},
+        mfa_enabled: false,
+      }));
     },
     staleTime: 1000 * 30,
   });

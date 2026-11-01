@@ -1,25 +1,16 @@
 import { useState } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
+
   Chip,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
   CircularProgress,
-  Tooltip,
   Paper,
   Stack,
   Switch,
@@ -31,7 +22,6 @@ import {
   EditRounded as EditIcon,
   DeleteRounded as DeleteIcon,
   PlayArrowRounded as TestIcon,
-  RuleRounded as RuleIcon,
   VerifiedUserRounded as PolicyIcon,
 } from '@mui/icons-material';
 import {
@@ -45,6 +35,7 @@ import {
 } from './query';
 import { useKeysQuery } from '../Keys/query';
 import type { InventoryRule } from './types';
+import { Table, type TableColumn, type TableAction } from '../../components/Table';
 import { ToastMsgs } from '../../api/toastUtils';
 import { useAuthStore } from '../../store/authStore';
 
@@ -156,6 +147,160 @@ export function RulesPage() {
 
   const rules = rulesData?.items || [];
 
+  const mainRuleColumns: TableColumn<InventoryRule>[] = [
+    {
+      key: 'is_active',
+      label: 'Enforcement',
+      render: (_, r) => (
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Switch
+            size="small"
+            checked={r.is_active}
+            disabled={!canUpdateRule}
+            onChange={(e) =>
+              toggleRuleMutation.mutate({ ruleId: r.id, isActive: e.target.checked })
+            }
+            sx={{
+              '& .MuiSwitch-switchBase.Mui-checked': { color: '#10B981' },
+              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                bgcolor: '#10B981',
+              },
+            }}
+          />
+          <Chip
+            size="small"
+            label={r.is_active ? 'ACTIVE' : 'DISABLED'}
+            sx={{
+              fontWeight: 700,
+              fontSize: '0.65rem',
+              bgcolor: r.is_active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)',
+              color: r.is_active ? '#34D399' : '#94A3B8',
+            }}
+          />
+        </Stack>
+      ),
+    },
+    {
+      key: 'rule_name',
+      label: 'Rule Name',
+      render: (_, r) => (
+        <Box>
+          <Typography variant="body2" fontWeight={700} sx={{ color: '#F8FAFC' }}>
+            {r.rule_name}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#64748B' }}>
+            ID: {r.id.slice(0, 8)}...
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      key: 'matching_claim_key',
+      label: 'Target Claim Key',
+      render: (_, r) => (
+        <Chip
+          size="small"
+          label={r.matching_claim_key}
+          sx={{
+            fontFamily: 'monospace',
+            bgcolor: 'rgba(59, 130, 246, 0.15)',
+            color: '#60A5FA',
+            fontWeight: 600,
+          }}
+        />
+      ),
+    },
+    {
+      key: 'expected_value',
+      label: 'Expected Value',
+      render: (_, r) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: '#FACC15' }}>
+          == "{r.expected_value}"
+        </Typography>
+      ),
+    },
+    {
+      key: 'key_id',
+      label: 'Scope',
+      render: (_, r) => (
+        <Chip
+          size="small"
+          label={r.key_id ? `Key: ${r.key_id.slice(0, 8)}...` : 'GLOBAL (All Keys)'}
+          sx={{
+            fontSize: '0.7rem',
+            bgcolor: r.key_id ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 255, 255, 0.06)',
+            color: r.key_id ? '#C084FC' : '#CBD5E1',
+          }}
+        />
+      ),
+    },
+  ];
+
+  const mainRuleActions: TableAction<InventoryRule>[] = [
+    ...(canUpdateRule ? [{
+      icon: <EditIcon fontSize="small" />,
+      title: 'Edit Rule',
+      variant: 'primary' as const,
+      onClick: (r: InventoryRule) => handleOpenEdit(r),
+    }] : []),
+    ...(canDeleteRule ? [{
+      icon: <DeleteIcon fontSize="small" />,
+      title: 'Delete Rule',
+      variant: 'error' as const,
+      onClick: (r: InventoryRule) => {
+        setRuleToDelete(r);
+        setDeleteDialogOpen(true);
+      },
+    }] : []),
+  ];
+
+  const applicableColumns: TableColumn<InventoryRule>[] = [
+    {
+      key: 'rule_name',
+      label: 'Policy Name',
+      render: (_, ar) => (
+        <Typography variant="body2" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
+          {ar.rule_name}
+        </Typography>
+      ),
+    },
+    {
+      key: 'matching_claim_key',
+      label: 'Claim Key',
+      render: (_, ar) => (
+        <Chip
+          size="small"
+          label={ar.matching_claim_key}
+          sx={{ fontFamily: 'monospace', bgcolor: 'rgba(59, 130, 246, 0.15)', color: '#60A5FA' }}
+        />
+      ),
+    },
+    {
+      key: 'expected_value',
+      label: 'Expected Value',
+      render: (_, ar) => (
+        <Typography variant="body2" sx={{ color: '#FACC15', fontFamily: 'monospace' }}>
+          == "{ar.expected_value}"
+        </Typography>
+      ),
+    },
+    {
+      key: 'key_id',
+      label: 'Applicable Scope',
+      render: (_, ar) => (
+        <Chip
+          size="small"
+          label={ar.key_id ? `Key: ${ar.key_id.slice(0, 8)}...` : 'GLOBAL'}
+          sx={{
+            fontSize: 10,
+            bgcolor: ar.key_id ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 255, 255, 0.06)',
+            color: ar.key_id ? '#C084FC' : '#CBD5E1',
+          }}
+        />
+      ),
+    },
+  ];
+
   return (
     <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
       {/* Top Banner */}
@@ -219,165 +364,18 @@ export function RulesPage() {
       </Box>
 
       {/* Rules Table */}
-      <Card
-        sx={{
-          bgcolor: '#0B132B',
-          borderRadius: 3,
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-        }}
-      >
-        <CardContent sx={{ p: 0 }}>
-          <TableContainer component={Paper} sx={{ bgcolor: 'transparent', boxShadow: 'none' }}>
-            <Table>
-              <TableHead sx={{ bgcolor: 'rgba(255, 255, 255, 0.03)' }}>
-                <TableRow>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>ENFORCEMENT</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>RULE NAME</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>TARGET CLAIM KEY</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>EXPECTED VALUE</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>SCOPE</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }} align="right">
-                    ACTIONS
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                      <CircularProgress size={32} sx={{ color: '#3B82F6' }} />
-                      <Typography variant="body2" sx={{ color: '#94A3B8', mt: 1.5 }}>
-                        Loading inventory verification rules...
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : rules.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                      <RuleIcon sx={{ fontSize: 44, color: '#475569', mb: 1 }} />
-                      <Typography variant="subtitle1" fontWeight={600} sx={{ color: '#94A3B8' }}>
-                        No inventory rules defined
-                      </Typography>
-                      {canCreateRule && (
-                        <Button variant="outlined" startIcon={<AddIcon />} onClick={handleOpenCreate} size="small" sx={{ mt: 2 }}>
-                          Add First Rule
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  rules.map((r) => (
-                    <TableRow
-                      key={r.id}
-                      sx={{
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                        '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.02)' },
-                      }}
-                    >
-                      <TableCell>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Switch
-                            size="small"
-                            checked={r.is_active}
-                            disabled={!canUpdateRule}
-                            onChange={(e) =>
-                              toggleRuleMutation.mutate({ ruleId: r.id, isActive: e.target.checked })
-                            }
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': { color: '#10B981' },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                bgcolor: '#10B981',
-                              },
-                            }}
-                          />
-                          <Chip
-                            size="small"
-                            label={r.is_active ? 'ACTIVE' : 'DISABLED'}
-                            sx={{
-                              fontWeight: 700,
-                              fontSize: '0.65rem',
-                              bgcolor: r.is_active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)',
-                              color: r.is_active ? '#34D399' : '#94A3B8',
-                            }}
-                          />
-                        </Stack>
-                      </TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={700} sx={{ color: '#F8FAFC' }}>
-                          {r.rule_name}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: '#64748B' }}>
-                          ID: {r.id.slice(0, 8)}...
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          label={r.matching_claim_key}
-                          sx={{
-                            fontFamily: 'monospace',
-                            bgcolor: 'rgba(59, 130, 246, 0.15)',
-                            color: '#60A5FA',
-                            fontWeight: 600,
-                          }}
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: '#FACC15' }}>
-                          == "{r.expected_value}"
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          label={r.key_id ? `Key: ${r.key_id.slice(0, 8)}...` : 'GLOBAL (All Keys)'}
-                          sx={{
-                            fontSize: '0.7rem',
-                            bgcolor: r.key_id ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 255, 255, 0.06)',
-                            color: r.key_id ? '#C084FC' : '#CBD5E1',
-                          }}
-                        />
-                      </TableCell>
-
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                          {canUpdateRule && (
-                            <Tooltip title="Edit Rule">
-                              <IconButton size="small" onClick={() => handleOpenEdit(r)} sx={{ color: '#60A5FA' }}>
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-
-                          {canDeleteRule && (
-                            <Tooltip title="Delete Rule">
-                              <IconButton
-                                size="small"
-                                onClick={() => {
-                                  setRuleToDelete(r);
-                                  setDeleteDialogOpen(true);
-                                }}
-                                sx={{ color: '#EF4444' }}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+      <Table<InventoryRule>
+        columns={mainRuleColumns}
+        data={rules}
+        rowKey="id"
+        isLoading={isLoading}
+        emptyMessage="No inventory validation rules found."
+        actions={mainRuleActions}
+        showSearch={true}
+        searchPlaceholder="Search rules by name, claim key, or value..."
+        showPagination={true}
+        itemsPerPage={10}
+      />
 
       {/* Modal: Create or Edit Rule */}
       <Dialog
@@ -527,44 +525,17 @@ export function RulesPage() {
               </Typography>
             </Paper>
           ) : (
-            <TableContainer component={Paper} sx={{ bgcolor: '#07111D', border: '1px solid #1E293B', borderRadius: 2 }}>
-              <Table size="small">
-                <TableHead sx={{ bgcolor: 'rgba(255, 255, 255, 0.03)' }}>
-                  <TableRow>
-                    <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>POLICY NAME</TableCell>
-                    <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>CLAIM KEY</TableCell>
-                    <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>EXPECTED VALUE</TableCell>
-                    <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>APPLICABLE SCOPE</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {applicableRules.map((ar) => (
-                    <TableRow key={ar.id}>
-                      <TableCell sx={{ color: '#F8FAFC', fontWeight: 600 }}>{ar.rule_name}</TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          label={ar.matching_claim_key}
-                          sx={{ fontFamily: 'monospace', bgcolor: 'rgba(59, 130, 246, 0.15)', color: '#60A5FA' }}
-                        />
-                      </TableCell>
-                      <TableCell sx={{ color: '#FACC15', fontFamily: 'monospace' }}>== "{ar.expected_value}"</TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          label={ar.key_id ? `Key: ${ar.key_id.slice(0, 8)}...` : 'GLOBAL'}
-                          sx={{
-                            fontSize: 10,
-                            bgcolor: ar.key_id ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 255, 255, 0.06)',
-                            color: ar.key_id ? '#C084FC' : '#CBD5E1',
-                          }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <Table<InventoryRule>
+              columns={applicableColumns}
+              data={applicableRules}
+              rowKey="id"
+              isLoading={isLoadingApplicable}
+              emptyMessage="No active applicable rules found for this verification context."
+              showSearch={false}
+              showPagination={true}
+              itemsPerPage={5}
+              size="xs"
+            />
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>

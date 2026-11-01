@@ -26,15 +26,19 @@ export interface StartShiftPayload {
 }
 
 export interface StartShiftResponse {
-  shift: ShiftRecord;
-  shift_token: string;
-  expires_at: string;
+  shift?: ShiftRecord | null;
+  shift_token?: string;
+  expires_at?: string;
   qr_code_base64?: string | null;
+  qrBlobUrl?: string;
+  isQrBlob?: boolean;
 }
 
 export interface ReissueShiftResponse {
-  shift: ShiftRecord;
-  shift_token: string;
-  expires_at: string;
+  shift?: ShiftRecord | null;
+  shift_token?: string;
+  expires_at?: string;
   qr_code_base64?: string | null;
+  qrBlobUrl?: string;
+  isQrBlob?: boolean;
 }

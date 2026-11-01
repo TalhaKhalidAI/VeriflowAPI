@@ -174,19 +174,24 @@ async def list_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     search: Optional[str] = None,
+    show_disabled: bool = Query(True, description="Show/include disabled user accounts"),
+    show_deleted: bool = Query(False, description="Show/include deleted user accounts"),
+    show_permissions: bool = Query(True, description="Show user permissions in response"),
     current_user: Dict[str, Any] = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List users (admin only)."""
     try:
-        data = await UserService(db).list_users(skip=skip, limit=limit, search=search)
+        data = await UserService(db).list_users(
+            skip=skip,
+            limit=limit,
+            search=search,
+            show_disabled=show_disabled,
+            show_deleted=show_deleted,
+            show_permissions=show_permissions,
+        )
 
-        return {
-            "users": [UserResponse.model_validate(user) for user in data["users"]],
-            "total": data["total"],
-            "skip": data["skip"],
-            "limit": data["limit"],
-        }
+        return data
 
     except HTTPException:
         raise

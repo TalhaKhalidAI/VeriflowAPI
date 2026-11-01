@@ -66,12 +66,14 @@ axiosInstance.interceptors.request.use(
     config.headers['X-Request-ID'] = crypto.randomUUID?.() || Date.now().toString()
     config.headers['X-App-Version'] = import.meta.env.VITE_APP_VERSION || '1.0.0'
     
-    // Only enable JWT Authorization header when really active / present in account session
-    const token = useAuthStore.getState().token
-    if (token && typeof token === 'string' && token.trim().length > 0) {
-      config.headers['Authorization'] = `Bearer ${token.trim()}`
-    } else {
-      delete config.headers['Authorization']
+    // Keep explicit Authorization header if provided (e.g. SLT temp tokens)
+    if (!config.headers['Authorization']) {
+      const token = useAuthStore.getState().token
+      if (token && typeof token === 'string' && token.trim().length > 0) {
+        config.headers['Authorization'] = `Bearer ${token.trim()}`
+      } else {
+        delete config.headers['Authorization']
+      }
     }
     
     return config

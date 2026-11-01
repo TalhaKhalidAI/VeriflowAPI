@@ -2,16 +2,9 @@
 import { useState } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
+
   Chip,
   IconButton,
   Dialog,
@@ -24,7 +17,6 @@ import {
   Select,
   MenuItem,
   CircularProgress,
-  Tooltip,
   Paper,
   Stack,
   Alert,
@@ -61,6 +53,7 @@ import { ToastMsgs } from '../../api/toastUtils';
 import { http } from '../../api/http/https';
 import { useAuthStore } from '../../store/authStore';
 import { OtpBoxesInput } from '../../components/OtpModal';
+import { Table, type TableColumn, type TableAction } from '../../components/Table';
 import { CloseRounded as CloseIcon } from '@mui/icons-material';
 
 export function KeysPage() {
@@ -283,6 +276,86 @@ export function KeysPage() {
 
   const keys = keysData?.items || [];
 
+  const keyColumns: TableColumn<KeyRecord>[] = [
+    {
+      key: 'kid',
+      label: 'Key ID (kid)',
+      render: (_, k) => (
+        <Box>
+          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#38BDF8' }}>
+            {k.kid}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#64748B' }}>
+            UUID: {k.id.slice(0, 8)}...
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      key: 'name',
+      label: 'Name / Description',
+      render: (_, k) => (
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: '#F8FAFC' }}>
+            {k.name}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#94A3B8' }}>
+            RSA-2048 / RS256
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (_, k) => (
+        <Chip
+          label={k.status.toUpperCase()}
+          size="small"
+          color={k.status === 'active' ? 'success' : 'error'}
+          sx={{ fontWeight: 700, fontSize: 11 }}
+        />
+      ),
+    },
+    {
+      key: 'created_at',
+      label: 'Created',
+      render: (_, k) => (
+        <Typography variant="body2" sx={{ color: '#94A3B8' }}>
+          {k.created_at ? new Date(k.created_at).toLocaleDateString() : 'N/A'}
+        </Typography>
+      ),
+    },
+  ];
+
+  const keyActions: TableAction<KeyRecord>[] = [
+    {
+      icon: <VisibilityIcon fontSize="small" />,
+      title: 'View Public Key PEM',
+      variant: 'info',
+      onClick: (k) => {
+        setSelectedKeyForPem(k);
+        setPemModalOpen(true);
+      },
+    },
+    ...(isAdmin ? [{
+      icon: <SecurityIcon fontSize="small" />,
+      title: 'Export Decrypted Private Key (Admin Only)',
+      variant: 'warning' as const,
+      onClick: (k: KeyRecord) => handleOpenExportAuth(k),
+    }] : []),
+    ...(canRevokeKey ? [{
+      icon: <RevokeIcon fontSize="small" />,
+      title: 'Revoke Key',
+      variant: 'error' as const,
+      disabled: (k: KeyRecord) => k.status !== 'active',
+      onClick: (k: KeyRecord) => {
+        setSelectedKeyForRevoke(k);
+        setRevokeModalOpen(true);
+      },
+    }] : []),
+  ];
+
   return (
     <Box sx={{ maxWidth: 1400, mx: 'auto', p: { xs: 2, sm: 3 } }}>
       {/* Top Banner */}
@@ -378,123 +451,19 @@ export function KeysPage() {
         </Stack>
       </Box>
 
-      {/* Keys Table Card */}
-      <Card sx={{ bgcolor: '#0B132B', border: '1px solid #1E293B', borderRadius: 3 }}>
-        <CardContent sx={{ p: 0 }}>
-          <TableContainer>
-            <Table>
-              <TableHead sx={{ bgcolor: '#07111D' }}>
-                <TableRow>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Key ID (kid)</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Name / Description</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Status</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600 }}>Created</TableCell>
-                  <TableCell sx={{ color: '#94A3B8', fontWeight: 600, textAlign: 'right' }}>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
-                      <CircularProgress color="primary" />
-                    </TableCell>
-                  </TableRow>
-                ) : keys.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 6, color: '#94A3B8' }}>
-                      No cryptographic keys generated yet.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  keys.map((k) => {
-                    const isActive = k.status === 'active';
-                    return (
-                      <TableRow key={k.id} sx={{ '&:hover': { bgcolor: '#0D1B3E' } }}>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#38BDF8' }}>
-                            {k.kid}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: '#64748B' }}>
-                            UUID: {k.id.slice(0, 8)}...
-                          </Typography>
-                        </TableCell>
-
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#F8FAFC' }}>
-                            {k.name}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                            RSA-2048 / RS256
-                          </Typography>
-                        </TableCell>
-
-                        <TableCell>
-                          <Chip
-                            label={k.status.toUpperCase()}
-                            size="small"
-                            color={isActive ? 'success' : 'error'}
-                            sx={{ fontWeight: 700, fontSize: 11 }}
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <Typography variant="body2" sx={{ color: '#94A3B8' }}>
-                            {k.created_at ? new Date(k.created_at).toLocaleDateString() : 'N/A'}
-                          </Typography>
-                        </TableCell>
-
-                        <TableCell align="right">
-                          <Stack direction="row" spacing={1} justifyContent="flex-end">
-                            <Tooltip title="View Public Key PEM">
-                              <IconButton
-                                size="small"
-                                onClick={() => {
-                                  setSelectedKeyForPem(k);
-                                  setPemModalOpen(true);
-                                }}
-                                sx={{ color: '#38BDF8' }}
-                              >
-                                <VisibilityIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-
-                            {isAdmin && (
-                              <Tooltip title="Export Decrypted Private Key (Admin Only)">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleOpenExportAuth(k)}
-                                  sx={{ color: '#F59E0B' }}
-                                >
-                                  <SecurityIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-
-                            {isActive && canRevokeKey && (
-                              <Tooltip title="Revoke Key">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => {
-                                    setSelectedKeyForRevoke(k);
-                                    setRevokeModalOpen(true);
-                                  }}
-                                  sx={{ color: '#EF4444' }}
-                                >
-                                  <RevokeIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+      {/* Keys Table */}
+      <Table<KeyRecord>
+        columns={keyColumns}
+        data={keys}
+        rowKey="id"
+        isLoading={isLoading}
+        emptyMessage="No cryptographic keys generated yet."
+        actions={keyActions}
+        showSearch={true}
+        searchPlaceholder="Search keys by name or kid..."
+        showPagination={true}
+        itemsPerPage={10}
+      />
 
       {/* CREATE KEY MODAL */}
       <Dialog open={createModalOpen} onClose={() => setCreateModalOpen(false)} maxWidth="sm" fullWidth>

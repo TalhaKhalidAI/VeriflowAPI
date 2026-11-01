@@ -42,3 +42,6 @@ class UserResponse(BaseModel):
     user_role: Optional[str] = None
     permissions: Optional[Dict[str, Any]] = None
     profile_pic: Optional[str] = None
+    disabled: Optional[bool] = False
+    is_deleted: Optional[bool] = False
+    is_active: Optional[bool] = True

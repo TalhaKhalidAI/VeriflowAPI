@@ -110,12 +110,13 @@ class ShiftService(BaseService):
             "kid": crypto_key.kid,
             "role": user.user_role,
             "permissions": user_perms,
-            "rules": rules or {},
             "type": "shift_token",
             "exp": shift.expires_at,
             "iat": datetime.now(timezone.utc),
             "jti": str(uuid.uuid4()),
         }
+        if rules is not None and len(rules) > 0:
+            to_encode["rules"] = rules
         return jwt.encode(
             to_encode,
             private_pem,
@@ -212,7 +213,7 @@ class ShiftService(BaseService):
             # Embed compact rules to ensure JWT fits standard QR camera resolution
             embedded_rules = rules_dict if (len(rules_list) > 3 or len(json.dumps(rules_list)) > 600) else (rules_list if rules_list else rules_dict)
         else:
-            embedded_rules = {}
+            embedded_rules = None
 
         shift_token = self._generate_shift_token(
             shift, user, crypto_key, rules=embedded_rules
@@ -306,7 +307,7 @@ class ShiftService(BaseService):
             # Embed compact rules to ensure JWT fits standard QR camera resolution
             embedded_rules = rules_dict if (len(rules_list) > 3 or len(json.dumps(rules_list)) > 600) else (rules_list if rules_list else rules_dict)
         else:
-            embedded_rules = {}
+            embedded_rules = None
 
         shift_token = self._generate_shift_token(
             shift, user, crypto_key, rules=embedded_rules
