@@ -22,7 +22,6 @@ import {
   VisibilityOff,
   Email as EmailIcon,
   Lock as LockIcon,
-  Fingerprint,
   VpnKeyRounded,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
@@ -166,35 +165,41 @@ export function Login() {
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
             }}
           >
-            {/* Header */}
+            {/* Industrial Header */}
             <Box sx={{ mb: 3, textAlign: 'center' }}>
               <Box
                 sx={{
                   display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   p: 1.5,
                   borderRadius: 3,
-                  background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  bgcolor: '#0B1323',
+                  border: '2px solid #FACC15',
                   mb: 1.5,
-                  boxShadow: '0 8px 16px rgba(0,0,0,0.4)',
+                  boxShadow: '0 0 20px rgba(250, 204, 21, 0.2)',
                 }}
               >
-                <Fingerprint sx={{ fontSize: 40, color: '#38BDF8' }} />
+                <img
+                  src="/msi_white.png"
+                  alt="VeriFlow Logo"
+                  style={{ width: 48, height: 42, objectFit: 'contain' }}
+                />
               </Box>
               <Typography
                 variant="h4"
                 sx={{
-                  fontWeight: 800,
-                  letterSpacing: '-0.5px',
-                  background: 'linear-gradient(to right, #FFFFFF, #94A3B8)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
+                  fontWeight: 900,
+                  fontFamily: 'monospace',
+                  letterSpacing: '0.05em',
+                  color: '#FACC15',
+                  textShadow: '0 0 15px rgba(250, 204, 21, 0.3)',
                 }}
               >
                 VERIFLOW
               </Typography>
-              <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5, fontWeight: 500 }}>
-                Cryptographic Key & Inventory Security Manager
+              <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5, fontWeight: 600, letterSpacing: '0.02em' }}>
+                Industrial QR Verification & Audit System
               </Typography>
             </Box>
 

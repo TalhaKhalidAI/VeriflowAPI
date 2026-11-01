@@ -1,38 +1,30 @@
 import { useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Grid,
-  Card,
-  CardContent,
-  Typography,
-  Button,
-  Chip,
-  Stack,
-  CircularProgress,
-} from '@mui/material';
+import { CircularProgress } from '@mui/material';
 import {
   VpnKeyRounded as KeyIcon,
   FactCheckRounded as RuleIcon,
   AccessTimeFilledRounded as ShiftIcon,
   QrCodeScannerRounded as ScanIcon,
   ArrowForwardRounded as ArrowIcon,
-  CheckCircleRounded as CheckIcon,
+  ShieldRounded as ShieldCheckIcon,
 } from '@mui/icons-material';
 import ReactECharts from 'echarts-for-react';
 import { useDashboardOverviewQuery } from './query';
+import { useActiveShiftQuery } from '../Shifts/query';
 import { useAuthStore } from '../../store/authStore';
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const { data: stats, isLoading } = useDashboardOverviewQuery();
+  const { data: activeShift, isLoading: isLoadingShift } = useActiveShiftQuery();
 
   const chartOption = {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
       backgroundColor: '#0F172A',
-      borderColor: 'rgba(255,255,255,0.1)',
+      borderColor: '#1E293B',
       textStyle: { color: '#F8FAFC' },
     },
     legend: {
@@ -42,8 +34,8 @@ export function DashboardPage() {
       right: 10,
     },
     grid: {
-      left: '3%',
-      right: '4%',
+      left: '2%',
+      right: '2%',
       bottom: '3%',
       top: '40px',
       containLabel: true,
@@ -105,371 +97,305 @@ export function DashboardPage() {
     ],
   };
 
+  const totalScans = (stats?.validScansCount || 0) + (stats?.invalidScansCount || 0);
+  const successRate = totalScans > 0 ? Math.round(((stats?.validScansCount || 0) / totalScans) * 100) : 100;
+
   return (
-    <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
-      {/* Welcome Banner */}
-      <Box sx={{ mb: 4 }}>
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
-          <Chip
-            size="small"
-            label="SYSTEM OPERATIONAL"
-            icon={<CheckIcon sx={{ fontSize: '14px !important', color: '#10B981 !important' }} />}
-            sx={{
-              bgcolor: 'rgba(16, 185, 129, 0.1)',
-              color: '#34D399',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              fontWeight: 700,
-            }}
-          />
-          <Typography variant="caption" sx={{ color: '#64748B' }}>
-            RS256 Offline Asymmetric Cryptography Enabled
-          </Typography>
-        </Stack>
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* Industrial Header Banner */}
+      <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl p-5 md:p-6 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#FACC15]/5 rounded-full blur-3xl pointer-events-none" />
 
-        <Typography variant="h4" fontWeight={800} sx={{ letterSpacing: -0.5 }}>
-          Welcome back, {user?.name || user?.email?.split('@')[0] || 'Operator'}
-        </Typography>
-        <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
-          Real-time security telemetry, active cryptographic keys, and warehouse inventory verification status.
-        </Typography>
-      </Box>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <img
+              src="/msi_white.png"
+              alt="VeriFlow"
+              className="w-12 h-12 md:w-14 md:h-14 object-contain filter drop-shadow-[0_0_12px_rgba(250,204,21,0.25)]"
+            />
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl md:text-3xl font-black text-[#FACC15] tracking-tight font-mono">
+                  VERIFLOW INDUSTRIAL
+                </h1>
+                <span className="badge badge-warning badge-outline text-[10px] font-mono font-bold tracking-wider">
+                  STATION V2.4
+                </span>
+              </div>
+              <p className="text-slate-400 text-xs md:text-sm font-medium mt-0.5">
+                Cryptographic RS256 QR Verification, Shift Scanners & Policy Governance
+              </p>
+            </div>
+          </div>
 
-      {/* 4 Stat Cards */}
-      <Grid container spacing={2.5} sx={{ mb: 4 }}>
-        {/* Card 1: Crypto Keys */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: '#0B132B',
-              borderRadius: 3,
-              border: '1px solid rgba(59, 130, 246, 0.2)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-              cursor: 'pointer',
-              transition: 'transform 0.15s ease',
-              '&:hover': { transform: 'translateY(-2px)' },
-            }}
-            onClick={() => navigate('/keys')}
-          >
-            <CardContent sx={{ p: 2.5 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Typography variant="caption" sx={{ color: '#94A3B8', fontWeight: 600 }}>
-                  ACTIVE RSA KEYS
-                </Typography>
-                <Box
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 1.5,
-                    bgcolor: 'rgba(59, 130, 246, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#60A5FA',
-                  }}
-                >
-                  <KeyIcon fontSize="small" />
-                </Box>
-              </Box>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>RS256 ENGINE ACTIVE</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
-              <Typography variant="h3" fontWeight={800} sx={{ color: '#F8FAFC' }}>
-                {isLoading ? <CircularProgress size={28} /> : stats?.activeKeysCount ?? 0}
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#60A5FA', display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
-                Manage Keys & JWKS <ArrowIcon sx={{ fontSize: 14 }} />
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Card 2: Inventory Rules */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: '#0B132B',
-              borderRadius: 3,
-              border: '1px solid rgba(250, 204, 21, 0.2)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-              cursor: 'pointer',
-              transition: 'transform 0.15s ease',
-              '&:hover': { transform: 'translateY(-2px)' },
-            }}
-            onClick={() => navigate('/rules')}
-          >
-            <CardContent sx={{ p: 2.5 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Typography variant="caption" sx={{ color: '#94A3B8', fontWeight: 600 }}>
-                  ENFORCED POLICIES
-                </Typography>
-                <Box
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 1.5,
-                    bgcolor: 'rgba(250, 204, 21, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#FACC15',
-                  }}
-                >
-                  <RuleIcon fontSize="small" />
-                </Box>
-              </Box>
-
-              <Typography variant="h3" fontWeight={800} sx={{ color: '#F8FAFC' }}>
-                {isLoading ? <CircularProgress size={28} /> : stats?.activeRulesCount ?? 0}
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#FACC15', display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
-                Configure Rules Matrix <ArrowIcon sx={{ fontSize: 14 }} />
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Card 3: Active Shift */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: '#0B132B',
-              borderRadius: 3,
-              border: `1px solid ${
-                stats?.hasActiveShift ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.2)'
-              }`,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-              cursor: 'pointer',
-              transition: 'transform 0.15s ease',
-              '&:hover': { transform: 'translateY(-2px)' },
-            }}
-            onClick={() => navigate('/shifts')}
-          >
-            <CardContent sx={{ p: 2.5 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Typography variant="caption" sx={{ color: '#94A3B8', fontWeight: 600 }}>
-                  WORK SHIFT STATUS
-                </Typography>
-                <Box
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 1.5,
-                    bgcolor: stats?.hasActiveShift
-                      ? 'rgba(16, 185, 129, 0.15)'
-                      : 'rgba(148, 163, 184, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: stats?.hasActiveShift ? '#34D399' : '#94A3B8',
-                  }}
-                >
-                  <ShiftIcon fontSize="small" />
-                </Box>
-              </Box>
-
-              <Typography
-                variant="h4"
-                fontWeight={800}
-                sx={{
-                  color: stats?.hasActiveShift ? '#34D399' : '#94A3B8',
-                  mt: 0.5,
-                  mb: 0.5,
-                }}
-              >
-                {isLoading ? <CircularProgress size={28} /> : stats?.hasActiveShift ? 'ON DUTY' : 'STANDBY'}
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#34D399', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                View Shift & Tokens <ArrowIcon sx={{ fontSize: 14 }} />
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Card 4: Scans Telemetry */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: '#0B132B',
-              borderRadius: 3,
-              border: '1px solid rgba(168, 85, 247, 0.2)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-              cursor: 'pointer',
-              transition: 'transform 0.15s ease',
-              '&:hover': { transform: 'translateY(-2px)' },
-            }}
-            onClick={() => navigate('/scans')}
-          >
-            <CardContent sx={{ p: 2.5 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Typography variant="caption" sx={{ color: '#94A3B8', fontWeight: 600 }}>
-                  TOTAL AUDIT SCANS
-                </Typography>
-                <Box
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 1.5,
-                    bgcolor: 'rgba(168, 85, 247, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#C084FC',
-                  }}
-                >
-                  <ScanIcon fontSize="small" />
-                </Box>
-              </Box>
-
-              <Typography variant="h3" fontWeight={800} sx={{ color: '#F8FAFC' }}>
-                {isLoading ? <CircularProgress size={28} /> : stats?.totalScansCount ?? 0}
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#C084FC', display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
-                Inspect Scans Log <ArrowIcon sx={{ fontSize: 14 }} />
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Chart Section */}
-      <Card
-        sx={{
-          bgcolor: '#0B132B',
-          borderRadius: 3,
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-          p: 3,
-          mb: 4,
-        }}
+      {/* Signature Android-style Active Operator Shift Card */}
+      <div
+        className={`rounded-2xl transition-all shadow-xl p-5 md:p-6 ${
+          activeShift
+            ? 'bg-[#0F172A] border-2 border-[#FACC15] shadow-[0_0_20px_rgba(250,204,21,0.12)]'
+            : 'bg-[#0F172A] border border-[#1E293B]'
+        }`}
       >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Box>
-            <Typography variant="subtitle1" fontWeight={700}>
-              Verification Telemetry Over Time
-            </Typography>
-            <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-              Real-time trend of valid vs violation scans captured by online and offline devices.
-            </Typography>
-          </Box>
-          <Chip label="LIVE STREAMING" size="small" sx={{ bgcolor: 'rgba(59, 130, 246, 0.15)', color: '#60A5FA', fontWeight: 600 }} />
-        </Box>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <ShieldCheckIcon sx={{ color: activeShift ? '#10B981' : '#94A3B8', fontSize: 24 }} />
+              <span
+                className={`font-mono text-xs md:text-sm font-extrabold uppercase tracking-wide ${
+                  activeShift ? 'text-emerald-400' : 'text-slate-400'
+                }`}
+              >
+                {activeShift ? 'ACTIVE SHIFT VERIFIED (RS256)' : 'NO SHIFT ACTIVE (STANDBY)'}
+              </span>
+              <span className="badge badge-sm badge-neutral font-mono text-[10px]">
+                OPERATOR: {user?.name || user?.email?.split('@')[0] || 'WORKER'}
+              </span>
+            </div>
 
-        <Box sx={{ height: 320, width: '100%' }}>
+            <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-slate-300">
+              <div>
+                <span className="text-slate-500">DEVICE: </span>
+                <span className="text-[#FACC15] font-bold">
+                  {isLoadingShift ? 'Checking...' : activeShift?.device_id || 'STATION-DESKTOP'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500">SESSION ID: </span>
+                <span className="text-slate-200">
+                  {activeShift?.id ? `#${activeShift.id}` : 'None'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500">EXPIRES: </span>
+                <span className="text-slate-300">
+                  {activeShift?.expires_at ? new Date(activeShift.expires_at).toLocaleTimeString() : 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {activeShift ? (
+              <>
+                <button
+                  onClick={() => navigate('/shifts')}
+                  className="btn btn-warning btn-sm font-bold shadow-lg gap-2 text-slate-900"
+                >
+                  <ShiftIcon sx={{ fontSize: 18 }} />
+                  View Shift QR Token
+                </button>
+                <button
+                  onClick={() => navigate('/scans')}
+                  className="btn btn-outline btn-sm font-bold gap-2 border-slate-700 text-slate-200 hover:bg-slate-800"
+                >
+                  <ScanIcon sx={{ fontSize: 18 }} />
+                  Scan Audits
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => navigate('/shifts')}
+                className="btn btn-warning btn-sm font-bold shadow-lg gap-2 text-slate-900"
+              >
+                <ShiftIcon sx={{ fontSize: 18 }} />
+                Start Work Shift
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* DaisyUI Responsive Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Stat 1: Crypto Keys */}
+        <div
+          onClick={() => navigate('/keys')}
+          className="bg-[#0F172A] border border-[#1E293B] hover:border-blue-500/50 rounded-xl p-4 cursor-pointer transition-all hover:-translate-y-0.5 shadow-lg flex flex-col justify-between"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-bold text-slate-400">ACTIVE RSA KEYS</span>
+            <div className="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center">
+              <KeyIcon fontSize="small" />
+            </div>
+          </div>
+          <div className="my-2">
+            <div className="text-3xl font-black font-mono text-white">
+              {isLoading ? <CircularProgress size={24} /> : stats?.activeKeysCount ?? 0}
+            </div>
+          </div>
+          <div className="text-xs text-blue-400 font-mono flex items-center gap-1">
+            <span>Manage JWKS & Rotation</span>
+            <ArrowIcon sx={{ fontSize: 14 }} />
+          </div>
+        </div>
+
+        {/* Stat 2: Inventory Rules */}
+        <div
+          onClick={() => navigate('/rules')}
+          className="bg-[#0F172A] border border-[#1E293B] hover:border-[#FACC15]/50 rounded-xl p-4 cursor-pointer transition-all hover:-translate-y-0.5 shadow-lg flex flex-col justify-between"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-bold text-slate-400">ENFORCED RULES</span>
+            <div className="w-8 h-8 rounded-lg bg-[#FACC15]/15 text-[#FACC15] flex items-center justify-center">
+              <RuleIcon fontSize="small" />
+            </div>
+          </div>
+          <div className="my-2">
+            <div className="text-3xl font-black font-mono text-white">
+              {isLoading ? <CircularProgress size={24} /> : stats?.activeRulesCount ?? 0}
+            </div>
+          </div>
+          <div className="text-xs text-[#FACC15] font-mono flex items-center gap-1">
+            <span>Configure Rule Matrix</span>
+            <ArrowIcon sx={{ fontSize: 14 }} />
+          </div>
+        </div>
+
+        {/* Stat 3: Scan Verification Rate */}
+        <div
+          onClick={() => navigate('/scans')}
+          className="bg-[#0F172A] border border-[#1E293B] hover:border-emerald-500/50 rounded-xl p-4 cursor-pointer transition-all hover:-translate-y-0.5 shadow-lg flex flex-col justify-between"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-bold text-slate-400">SCAN INTEGRITY</span>
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+              <ScanIcon fontSize="small" />
+            </div>
+          </div>
+          <div className="my-2">
+            <div className="text-3xl font-black font-mono text-emerald-400">
+              {isLoading ? <CircularProgress size={24} /> : `${successRate}%`}
+            </div>
+          </div>
+          <div className="text-xs text-slate-400 font-mono">
+            <span>{stats?.validScansCount ?? 0} passed / {stats?.invalidScansCount ?? 0} alerts</span>
+          </div>
+        </div>
+
+        {/* Stat 4: Shift Telemetry */}
+        <div
+          onClick={() => navigate('/shifts')}
+          className="bg-[#0F172A] border border-[#1E293B] hover:border-amber-500/50 rounded-xl p-4 cursor-pointer transition-all hover:-translate-y-0.5 shadow-lg flex flex-col justify-between"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-bold text-slate-400">WORKER SESSION</span>
+            <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center">
+              <ShiftIcon fontSize="small" />
+            </div>
+          </div>
+          <div className="my-2">
+            <div className="text-lg font-bold font-mono text-white flex items-center gap-2">
+              {activeShift ? (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>ONLINE ACTIVE</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+                  <span>STANDBY</span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="text-xs text-amber-400 font-mono flex items-center gap-1">
+            <span>Shift Controls & QR</span>
+            <ArrowIcon sx={{ fontSize: 14 }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Real-time Telemetry Chart */}
+      <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl p-5 md:p-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-base md:text-lg font-bold text-white font-mono flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              REAL-TIME SCAN VERIFICATION FLOW
+            </h2>
+            <p className="text-slate-400 text-xs">
+              Live rate of valid cryptographically signed scans vs offline policy violations
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="badge badge-sm badge-success font-mono font-bold">LIVE TELEMETRY</span>
+          </div>
+        </div>
+        <div className="h-72 w-full">
           <ReactECharts option={chartOption} style={{ height: '100%', width: '100%' }} />
-        </Box>
-      </Card>
+        </div>
+      </div>
 
-      {/* Quick Action Shortcuts */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
-          Security Action Shortcuts
-        </Typography>
+      {/* Industrial Security Action Shortcuts */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-mono font-bold text-slate-300 uppercase tracking-wider">
+          Industrial Action Matrix
+        </h3>
 
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => navigate('/shifts')}
-              sx={{
-                p: 2,
-                justifyContent: 'flex-start',
-                textAlign: 'left',
-                borderColor: 'rgba(255, 255, 255, 0.1)',
-                color: '#F8FAFC',
-                '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.04)', borderColor: '#10B981' },
-              }}
-            >
-              <ShiftIcon sx={{ mr: 1.5, color: '#10B981' }} />
-              <Box>
-                <Typography variant="body2" fontWeight={600}>
-                  Launch Work Shift
-                </Typography>
-                <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                  Generate on-screen QR
-                </Typography>
-              </Box>
-            </Button>
-          </Grid>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            onClick={() => navigate('/shifts')}
+            className="flex items-center gap-3 p-3.5 rounded-xl bg-[#0F172A] border border-[#1E293B] hover:border-emerald-500/50 hover:bg-[#111C2E] transition-all text-left"
+          >
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+              <ShiftIcon />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white">Start Work Shift</div>
+              <div className="text-xs text-slate-400">Generate on-screen QR</div>
+            </div>
+          </button>
 
-          <Grid item xs={12} sm={6} md={3}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => navigate('/keys')}
-              sx={{
-                p: 2,
-                justifyContent: 'flex-start',
-                textAlign: 'left',
-                borderColor: 'rgba(255, 255, 255, 0.1)',
-                color: '#F8FAFC',
-                '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.04)', borderColor: '#3B82F6' },
-              }}
-            >
-              <KeyIcon sx={{ mr: 1.5, color: '#3B82F6' }} />
-              <Box>
-                <Typography variant="body2" fontWeight={600}>
-                  Rotate Crypto Key
-                </Typography>
-                <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                  Generate new primary RSA
-                </Typography>
-              </Box>
-            </Button>
-          </Grid>
+          <button
+            onClick={() => navigate('/keys')}
+            className="flex items-center gap-3 p-3.5 rounded-xl bg-[#0F172A] border border-[#1E293B] hover:border-blue-500/50 hover:bg-[#111C2E] transition-all text-left"
+          >
+            <div className="w-10 h-10 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
+              <KeyIcon />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white">Rotate Crypto Key</div>
+              <div className="text-xs text-slate-400">Generate new primary RSA</div>
+            </div>
+          </button>
 
-          <Grid item xs={12} sm={6} md={3}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => navigate('/rules')}
-              sx={{
-                p: 2,
-                justifyContent: 'flex-start',
-                textAlign: 'left',
-                borderColor: 'rgba(255, 255, 255, 0.1)',
-                color: '#F8FAFC',
-                '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.04)', borderColor: '#FACC15' },
-              }}
-            >
-              <RuleIcon sx={{ mr: 1.5, color: '#FACC15' }} />
-              <Box>
-                <Typography variant="body2" fontWeight={600}>
-                  Add Inventory Rule
-                </Typography>
-                <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                  Enforce tag claim check
-                </Typography>
-              </Box>
-            </Button>
-          </Grid>
+          <button
+            onClick={() => navigate('/rules')}
+            className="flex items-center gap-3 p-3.5 rounded-xl bg-[#0F172A] border border-[#1E293B] hover:border-[#FACC15]/50 hover:bg-[#111C2E] transition-all text-left"
+          >
+            <div className="w-10 h-10 rounded-lg bg-[#FACC15]/15 text-[#FACC15] flex items-center justify-center shrink-0">
+              <RuleIcon />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white">Inventory Rules</div>
+              <div className="text-xs text-slate-400">Enforce tag claim checks</div>
+            </div>
+          </button>
 
-          <Grid item xs={12} sm={6} md={3}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => navigate('/scans')}
-              sx={{
-                p: 2,
-                justifyContent: 'flex-start',
-                textAlign: 'left',
-                borderColor: 'rgba(255, 255, 255, 0.1)',
-                color: '#F8FAFC',
-                '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.04)', borderColor: '#C084FC' },
-              }}
-            >
-              <ScanIcon sx={{ mr: 1.5, color: '#C084FC' }} />
-              <Box>
-                <Typography variant="body2" fontWeight={600}>
-                  Verify Raw Token
-                </Typography>
-                <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                  Offline signature test
-                </Typography>
-              </Box>
-            </Button>
-          </Grid>
-        </Grid>
-      </Box>
-    </Box>
+          <button
+            onClick={() => navigate('/scans')}
+            className="flex items-center gap-3 p-3.5 rounded-xl bg-[#0F172A] border border-[#1E293B] hover:border-purple-500/50 hover:bg-[#111C2E] transition-all text-left"
+          >
+            <div className="w-10 h-10 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0">
+              <ScanIcon />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white">Verify Raw Token</div>
+              <div className="text-xs text-slate-400">Offline signature test</div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
