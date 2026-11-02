@@ -30,6 +30,7 @@ import { useMFAStatusQuery } from '../pages/Security/query';
 import { useUpdateUserMutation, useUpdatePasswordMutation, useDisableAccountMutation, useDeleteAccountMutation } from '../pages/Admin/query';
 import { OtpBoxesInput } from './OtpModal';
 import { ToastMsgs } from '../api/toastUtils';
+import { PERMISSION_METADATA } from '../config/permissionsMetadata';
 
 interface AccountModalProps {
   open: boolean;
@@ -416,21 +417,40 @@ export const AccountModal: React.FC<AccountModalProps> = ({ open, onClose }) => 
                   No matching permissions found.
                 </div>
               ) : (
-                userPermEntries.map(([permKey, granted]) => (
-                  <div
-                    key={permKey}
-                    className={`flex items-center justify-between p-2 rounded-lg border text-xs font-mono transition-colors ${
-                      granted
-                        ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
-                        : 'bg-slate-900/40 border-slate-800 text-slate-500 line-through'
-                    }`}
-                  >
-                    <span>{permKey}</span>
-                    <span className={`badge badge-xs font-mono font-bold ${granted ? 'badge-success' : 'badge-ghost text-slate-600'}`}>
-                      {granted ? 'GRANTED' : 'DENIED'}
-                    </span>
-                  </div>
-                ))
+                userPermEntries.map(([permKey, granted]) => {
+                  const meta = PERMISSION_METADATA[permKey];
+                  const isTagsCreate = permKey === 'tags.create';
+                  return (
+                    <div
+                      key={permKey}
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg border text-xs transition-colors gap-2 ${
+                        isTagsCreate
+                          ? 'bg-yellow-950/25 border-yellow-500/50 text-yellow-200'
+                          : granted
+                          ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
+                          : 'bg-slate-900/40 border-slate-800 text-slate-500'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-white text-[12px]">{meta?.label || permKey}</span>
+                          {meta?.badge && (
+                            <span className="badge badge-xs bg-yellow-400 text-slate-950 font-bold font-mono">
+                              {meta.badge}
+                            </span>
+                          )}
+                          <span className="font-mono text-slate-400 text-[11px]">({permKey})</span>
+                        </div>
+                        {meta?.description && (
+                          <p className="text-[11px] text-slate-400 mt-0.5">{meta.description}</p>
+                        )}
+                      </div>
+                      <span className={`badge badge-xs font-mono font-bold self-start sm:self-auto shrink-0 ${granted ? 'badge-success' : 'badge-ghost text-slate-600'}`}>
+                        {granted ? 'GRANTED' : 'DENIED'}
+                      </span>
+                    </div>
+                  );
+                })
               )}
             </div>
           </Box>

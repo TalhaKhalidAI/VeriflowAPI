@@ -423,7 +423,9 @@ async def generate_product_tag_qr(
         False,
         description="Checkbox: if checked (true), returns the QR code image (PNG) directly so it can be scanned from screen. If unchecked (false), returns raw JSON data.",
     ),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(
+        require_permission([Permission.TAGS_CREATE], mode="any", bypass_admin=True)
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     service = CryptoKeyService(db)

@@ -523,6 +523,7 @@ class ShiftService(BaseService):
             is_privileged
             or self._has_permission(current_user, Permission.SHIFTS_VIEW)
             or self._has_permission(current_user, Permission.SHIFTS_VIEW_OWN)
+            or self._has_permission(current_user, Permission.USER_HISTORY_VIEW)
         )
         auth_user_id = self._get_user_id(current_user)
 

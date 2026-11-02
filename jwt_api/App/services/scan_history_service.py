@@ -64,8 +64,12 @@ class ScanHistoryService(BaseService):
         if self._is_admin(current_user):
             return
 
-        if require_perm and not self._has_permission(current_user, require_perm):
-            raise PermissionDeniedError(f"Missing required permission: {require_perm.value}")
+        if require_perm:
+            has_perm = self._has_permission(current_user, require_perm)
+            if not has_perm and require_perm == Permission.SCANS_DELETE:
+                has_perm = self._has_permission(current_user, Permission.USER_HISTORY_DELETE)
+            if not has_perm:
+                raise PermissionDeniedError(f"Missing required permission: {require_perm.value}")
 
         # If user has SCANS_VIEW_ANY, they have supervisor privileges to manage scans across all workers
         if self._has_permission(current_user, Permission.SCANS_VIEW_ANY):
@@ -135,6 +139,7 @@ class ScanHistoryService(BaseService):
         can_view_own = (
             is_privileged
             or self._has_permission(current_user, Permission.SCANS_VIEW_OWN)
+            or self._has_permission(current_user, Permission.USER_HISTORY_VIEW)
         )
         user_id = self._get_user_id(current_user)
 

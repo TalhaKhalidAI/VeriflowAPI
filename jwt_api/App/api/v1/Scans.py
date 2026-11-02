@@ -251,7 +251,7 @@ async def update_scan(
 async def delete_scan(
     scan_id: int,
     current_user: Dict[str, Any] = Depends(
-        require_permission([Permission.SCANS_DELETE], mode="any", bypass_admin=True)
+        require_permission([Permission.SCANS_DELETE, Permission.USER_HISTORY_DELETE], mode="any", bypass_admin=True)
     ),
     db: AsyncSession = Depends(get_db),
 ):

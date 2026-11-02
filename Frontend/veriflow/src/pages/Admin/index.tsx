@@ -63,6 +63,7 @@ import { useMFAStatusQuery } from '../Security/query';
 import { ToastMsgs } from '../../api/toastUtils';
 import { OtpBoxesInput } from '../../components/OtpModal';
 import { Table, type TableColumn } from '../../components/Table';
+import { PERMISSION_METADATA } from '../../config/permissionsMetadata';
 import { CloseRounded as CloseIcon } from '@mui/icons-material';
 
 export const AdminPage: React.FC = () => {
@@ -635,25 +636,71 @@ export const AdminPage: React.FC = () => {
                     <Typography variant="subtitle2" sx={{ color: '#38BDF8', fontWeight: 700, mb: 1.5 }}>
                       {category}
                     </Typography>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                      {perms.map((perm) => (
-                        <FormControlLabel
-                          key={perm}
-                          control={
-                            <Checkbox
-                              checked={Boolean(userPerms[perm])}
-                              onChange={() => handleTogglePerm(perm)}
-                              size="small"
-                              sx={{ color: '#475569', '&.Mui-checked': { color: '#38BDF8' } }}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {perms.map((perm) => {
+                        const meta = PERMISSION_METADATA[perm];
+                        const isTagsCreate = perm === 'tags.create';
+                        return (
+                          <Box
+                            key={perm}
+                            sx={{
+                              p: 1.25,
+                              borderRadius: 1.5,
+                              border: isTagsCreate ? '1px solid rgba(250, 204, 21, 0.4)' : '1px solid #1E293B',
+                              bgcolor: isTagsCreate ? 'rgba(250, 204, 21, 0.06)' : 'rgba(15, 23, 42, 0.5)',
+                              transition: 'all 0.2s',
+                              '&:hover': {
+                                bgcolor: isTagsCreate ? 'rgba(250, 204, 21, 0.12)' : 'rgba(30, 41, 59, 0.6)',
+                                borderColor: isTagsCreate ? '#FACC15' : '#334155',
+                              },
+                            }}
+                          >
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={Boolean(userPerms[perm])}
+                                  onChange={() => handleTogglePerm(perm)}
+                                  size="small"
+                                  sx={{
+                                    color: isTagsCreate ? '#FACC15' : '#475569',
+                                    '&.Mui-checked': { color: isTagsCreate ? '#FACC15' : '#38BDF8' },
+                                    mt: -0.5,
+                                  }}
+                                />
+                              }
+                              label={
+                                <Box>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        color: isTagsCreate ? '#FDE047' : '#F8FAFC',
+                                        fontWeight: isTagsCreate ? 800 : 700,
+                                        fontSize: '12.5px',
+                                      }}
+                                    >
+                                      {meta?.label || perm}
+                                    </Typography>
+                                    {meta?.badge && (
+                                      <span className="badge badge-xs bg-yellow-400 text-slate-950 font-bold font-mono">
+                                        {meta.badge}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{ display: 'block', color: isTagsCreate ? '#FEF08A' : '#94A3B8', fontSize: '11px', mt: 0.2, lineHeight: 1.3 }}
+                                  >
+                                    <span className="font-mono text-slate-500 mr-1">({perm})</span>
+                                    {meta?.description || ''}
+                                  </Typography>
+                                </Box>
+                              }
+                              sx={{ m: 0, alignItems: 'flex-start', width: '100%' }}
                             />
-                          }
-                          label={
-                            <Typography variant="caption" sx={{ color: '#E2E8F0', fontFamily: 'monospace' }}>
-                              {perm}
-                            </Typography>
-                          }
-                        />
-                      ))}
+                          </Box>
+                        );
+                      })}
                     </Box>
                   </Paper>
                 </Grid>

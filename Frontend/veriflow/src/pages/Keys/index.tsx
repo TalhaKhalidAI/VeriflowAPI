@@ -262,6 +262,10 @@ export function KeysPage() {
   };
 
   const handleGenerateTag = async () => {
+    if (!canCreateTags) {
+      ToastMsgs.error("Permission 'tags.create' required to generate product tags");
+      return;
+    }
     let finalPayload: Record<string, any>;
     if (tagPayloadMode === 'json') {
       try {
@@ -408,6 +412,20 @@ export function KeysPage() {
           <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
             Manage RSA keypairs, sign offline tokens, inspect JWKS, and issue RS256-signed product tag QR codes.
           </Typography>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs font-mono text-slate-400">Product Tag QR Engine:</span>
+            {canCreateTags ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-yellow-500/15 border border-yellow-500/40 text-yellow-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+                tags.create ACTIVE
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-rose-500/10 border border-rose-500/30 text-rose-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                tags.create LOCKED (Admin Assignment Required)
+              </span>
+            )}
+          </div>
         </Box>
 
         {/* Sleek Industrial Command Toolbar */}
@@ -438,15 +456,23 @@ export function KeysPage() {
             </button>
           )}
 
-          {canCreateTags && (
-            <button
-              onClick={() => setTagModalOpen(true)}
-              className="btn btn-sm bg-[#0F172A] border border-[#1E293B] hover:border-yellow-400 text-slate-300 hover:text-yellow-400 font-mono text-xs font-semibold gap-1.5 transition-all shadow-sm"
-            >
-              <QrCodeIcon sx={{ fontSize: 16, color: '#FACC15' }} />
-              <span>Product Tag QR</span>
-            </button>
-          )}
+          <button
+            onClick={() => {
+              if (!canCreateTags) {
+                setTagTab(1);
+              }
+              setTagModalOpen(true);
+            }}
+            className={
+              canCreateTags
+                ? "btn btn-sm bg-[#0F172A] border border-[#1E293B] hover:border-yellow-400 text-slate-300 hover:text-yellow-400 font-mono text-xs font-semibold gap-1.5 transition-all shadow-sm"
+                : "btn btn-sm bg-[#0F172A] border border-slate-800 text-slate-500 hover:border-slate-700 font-mono text-xs font-semibold gap-1.5 transition-all shadow-sm"
+            }
+            title={canCreateTags ? "Product Tag QR Engine (RS256 Signed)" : "Requires tags.create permission to generate tags"}
+          >
+            <QrCodeIcon sx={{ fontSize: 16, color: canCreateTags ? '#FACC15' : '#64748B' }} />
+            <span>Product Tag QR {!canCreateTags && '🔒'}</span>
+          </button>
 
           <button
             onClick={() => setJwksModalOpen(true)}
@@ -954,18 +980,54 @@ export function KeysPage() {
 
       {/* PRODUCT TAG QR MODAL WITH GENERATE & VERIFY TABS */}
       <Dialog open={tagModalOpen} onClose={() => setTagModalOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ bgcolor: '#0B132B', color: '#F8FAFC', pb: 1 }}>
-          Product Tag QR Engine (RS256 Signed)
+        <DialogTitle sx={{ bgcolor: '#0B132B', color: '#F8FAFC', pb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+          <div className="flex items-center gap-2">
+            <span>Product Tag QR Engine (RS256 Signed)</span>
+            <span className="badge badge-sm bg-yellow-400 text-slate-950 font-bold font-mono">TAGS.CREATE</span>
+          </div>
+          <div>
+            {canCreateTags ? (
+              <span className="badge badge-sm badge-success font-mono font-bold">STATUS: AUTHORIZED</span>
+            ) : (
+              <span className="badge badge-sm badge-error font-mono font-bold">STATUS: LOCKED (LACKS tags.create)</span>
+            )}
+          </div>
         </DialogTitle>
         <Box sx={{ borderBottom: 1, borderColor: '#1E293B', bgcolor: '#0B132B', px: 3 }}>
           <Tabs value={tagTab} onChange={(_, val) => setTagTab(val)}>
-            <Tab label="Generate Product Tag QR" />
+            <Tab
+              label={
+                <span className="flex items-center gap-1.5">
+                  Generate Product Tag QR
+                  {!canCreateTags && <span className="badge badge-xs badge-error font-mono">Locked</span>}
+                </span>
+              }
+            />
             <Tab label="Verify Tag / Scan QR Code" />
           </Tabs>
         </Box>
         <DialogContent sx={{ bgcolor: '#0B132B', pt: 3 }}>
           {tagTab === 0 && (
             <Stack spacing={2.5}>
+              {!canCreateTags && (
+                <Box
+                  sx={{
+                    p: 3,
+                    bgcolor: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: 2,
+                    textAlign: 'center',
+                    mb: 1,
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ color: '#F87171', fontWeight: 700, mb: 0.5 }}>
+                    🔒 Permission Required: tags.create
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#FECACA', fontSize: '13px' }}>
+                    You do not have permission to generate RS256-signed Product Tag QR codes. The <code>tags.create</code> permission or Admin role is required.
+                  </Typography>
+                </Box>
+              )}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1E293B] pb-2.5">
                 <Typography variant="body2" sx={{ color: '#94A3B8' }}>
                   Signs arbitrary inventory attributes with RSA and dynamically generates a fitted QR code image.
@@ -1151,7 +1213,7 @@ export function KeysPage() {
               <Button
                 variant="contained"
                 onClick={handleGenerateTag}
-                disabled={generateTagMutation.isPending}
+                disabled={generateTagMutation.isPending || !canCreateTags}
                 sx={{ bgcolor: '#FACC15', color: '#0F172A', fontWeight: 700, '&:hover': { bgcolor: '#EAB308' } }}
               >
                 {generateTagMutation.isPending ? <CircularProgress size={20} /> : 'Generate Scannable Tag QR'}

@@ -573,14 +573,14 @@ class CryptoKeyService(BaseService):
             raise UserNotFoundError(f"User {auth_user_id} not found or inactive")
 
         user_perms = current_user.get("permissions") or {}
-        if isinstance(user.permissions, dict):
+        if isinstance(getattr(user, "permissions", None), dict):
             user_perms = {**user.permissions, **user_perms}
 
-        # 1. Permission Gate
+        # 1. Permission Gate (Strictly tags.create or Admin)
         has_permission = (
             is_admin
             or user_perms.get(Permission.TAGS_CREATE.value) is True
-            or user_perms.get(Permission.KEYS_CREATE.value) is True
+            or user_perms.get("tags.create") is True
             or user_perms.get("*") is True
         )
         if not has_permission:
