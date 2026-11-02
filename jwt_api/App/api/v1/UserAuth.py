@@ -109,7 +109,9 @@ async def login(
                     "id": user["id"],
                     "email": user["email"],
                     "name": user["name"],
-                    "role": user["role"],
+                    "role": user.get("user_role") or user.get("role"),
+                    "user_role": user.get("user_role") or user.get("role"),
+                    "permissions": user.get("permissions") or {},
                 },
             }
 

@@ -50,7 +50,9 @@ import { useAuthStore } from '../../store/authStore';
 
 export function ShiftsPage() {
   const user = useAuthStore((state) => state.user);
-  const isAdmin = user?.role === 'admin' || user?.user_role === 'admin';
+  const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
+  const canViewAny = isAdmin || Boolean(user?.permissions?.['shifts.view.any']) || Boolean(user?.permissions?.['shifts.view.all']);
+  const canViewSelf = canViewAny || Boolean(user?.permissions?.['shifts.view']) || Boolean(user?.permissions?.['shifts.view.own']);
   const canCreateShift = isAdmin || Boolean(user?.permissions?.['shifts.create']);
   const canCheckoutShift = isAdmin || Boolean(user?.permissions?.['shifts.checkout']);
 
@@ -181,7 +183,7 @@ export function ShiftsPage() {
     document.body.removeChild(a);
   };
 
-  const shifts = shiftsData?.items || [];
+  const shifts = canViewSelf ? (shiftsData?.items || []) : [];
   const hasActiveShift = Boolean(activeShift && activeShift.status === 'active');
 
   const shiftColumns: TableColumn<ShiftRecord>[] = [
@@ -191,7 +193,7 @@ export function ShiftsPage() {
       render: (_, s) => (
         <Box>
           <Typography variant="body2" fontWeight={600} sx={{ color: '#F8FAFC' }}>
-            User #{s.user_id}
+            {s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`}
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748B', fontFamily: 'monospace' }}>
             {s.id.slice(0, 8)}...
@@ -213,7 +215,7 @@ export function ShiftsPage() {
       label: 'Key ID',
       render: (_, s) => (
         <Typography variant="caption" sx={{ color: '#38BDF8', fontFamily: 'monospace' }}>
-          {s.key_id ? s.key_id.slice(0, 10) : 'N/A'}
+          {s.key_id ? String(s.key_id).slice(0, 10) : 'N/A'}
         </Typography>
       ),
     },
@@ -222,7 +224,7 @@ export function ShiftsPage() {
       label: 'Status',
       render: (_, s) => (
         <Chip
-          label={s.status.toUpperCase()}
+          label={String(s.status || '').toUpperCase()}
           size="small"
           color={s.status === 'active' ? 'success' : 'default'}
           sx={{ fontWeight: 700, fontSize: 11 }}
@@ -432,13 +434,19 @@ export function ShiftsPage() {
         </Alert>
       )}
 
+      {!canViewSelf && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          You do not have permission to view work shifts (requires 'shifts.view' permission).
+        </Alert>
+      )}
+
       {/* Shifts History Table */}
       <Table<ShiftRecord>
         columns={shiftColumns}
         data={shifts}
         rowKey="id"
         isLoading={isLoadingShifts}
-        emptyMessage="No shift records found."
+        emptyMessage={canViewSelf ? "No shift records found." : "No shifts accessible (shifts.view disabled)."}
         actions={shiftActions}
         showSearch={true}
         searchPlaceholder="Search shifts by user or device..."

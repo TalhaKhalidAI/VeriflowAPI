@@ -41,7 +41,8 @@ import { useAuthStore } from '../../store/authStore';
 
 export function RulesPage() {
   const user = useAuthStore((state) => state.user);
-  const isAdmin = user?.role === 'admin' || user?.user_role === 'admin';
+  const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
+  const canViewRule = isAdmin || Boolean(user?.permissions?.['inventory_rules.view']);
   const canCreateRule = isAdmin || Boolean(user?.permissions?.['inventory_rules.create']);
   const canUpdateRule = isAdmin || Boolean(user?.permissions?.['inventory_rules.update']);
   const canDeleteRule = isAdmin || Boolean(user?.permissions?.['inventory_rules.delete']);
@@ -145,7 +146,7 @@ export function RulesPage() {
     }
   };
 
-  const rules = rulesData?.items || [];
+  const rules = canViewRule ? (rulesData?.items || []) : [];
 
   const mainRuleColumns: TableColumn<InventoryRule>[] = [
     {
@@ -189,7 +190,7 @@ export function RulesPage() {
             {r.rule_name}
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748B' }}>
-            ID: {r.id.slice(0, 8)}...
+            ID: {String(r.id || '').slice(0, 8)}...
           </Typography>
         </Box>
       ),
@@ -225,7 +226,7 @@ export function RulesPage() {
       render: (_, r) => (
         <Chip
           size="small"
-          label={r.key_id ? `Key: ${r.key_id.slice(0, 8)}...` : 'GLOBAL (All Keys)'}
+          label={r.key_id ? `Key: ${String(r.key_id).slice(0, 8)}...` : 'GLOBAL (All Keys)'}
           sx={{
             fontSize: '0.7rem',
             bgcolor: r.key_id ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 255, 255, 0.06)',
@@ -363,13 +364,19 @@ export function RulesPage() {
         </Stack>
       </Box>
 
+      {!canViewRule && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          You do not have permission to view inventory rules (requires 'inventory_rules.view' permission).
+        </Alert>
+      )}
+
       {/* Rules Table */}
       <Table<InventoryRule>
         columns={mainRuleColumns}
         data={rules}
         rowKey="id"
         isLoading={isLoading}
-        emptyMessage="No inventory validation rules found."
+        emptyMessage={canViewRule ? "No inventory validation rules found." : "No verification rules accessible (inventory_rules.view disabled)."}
         actions={mainRuleActions}
         showSearch={true}
         searchPlaceholder="Search rules by name, claim key, or value..."

@@ -35,6 +35,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useAppStore } from '../../store/appStore';
 import { checkPermission, PERMISSION_MAP } from '../../HOCS/withPermissions';
 import { useActiveShiftQuery } from '../../pages/Shifts/query';
+import { http } from '../../api/http/https';
 
 const DRAWER_WIDTH = 260;
 const COLLAPSED_WIDTH = 72;
@@ -121,6 +122,30 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
   const toggleSidebar = useAppStore((state) => state.toggleSidebar);
   const mobileSidebarOpen = useAppStore((state) => state.mobileSidebarOpen);
   const setMobileSidebarOpen = useAppStore((state) => state.setMobileSidebarOpen);
+
+  // Continuously sync user permissions and role with the server
+  React.useEffect(() => {
+    let isMounted = true;
+    const syncProfile = async () => {
+      try {
+        const profile = await http.get<any>("/users/users_config/me");
+        if (isMounted && profile && (profile.id || profile.email)) {
+          useAuthStore.getState().setUser({
+            ...profile,
+            role: profile.user_role || profile.role || "user",
+            user_role: profile.user_role || profile.role || "user",
+            permissions: profile.permissions || {},
+          });
+        }
+      } catch (err) {
+        // Ignored in background
+      }
+    };
+    syncProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Live active shift query for industrial telemetry
   const { data: activeShift } = useActiveShiftQuery();
@@ -557,7 +582,7 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
                 )}
               </div>
               <span className="btm-nav-label text-[10px] font-medium tracking-tight mt-0.5">
-                {item.title.split(' ')[0]}
+                {String(item?.title || '').split(' ')[0]}
               </span>
             </button>
           );

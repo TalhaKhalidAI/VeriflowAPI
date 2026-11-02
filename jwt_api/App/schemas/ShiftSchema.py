@@ -40,6 +40,8 @@ class ShiftResponse(BaseModel):
     expires_at: Optional[str] = None
     ended_at: Optional[str] = None
     revoked_reason: Optional[str] = None
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
 
 
 class StartShiftResponse(BaseModel):

@@ -44,3 +44,35 @@ export const useVerifyTokenDirectMutation = () => {
     },
   });
 };
+
+export const useUpdateScanMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ scanId, status, reason }: { scanId: number; status?: string; reason?: string }) => {
+      return await http.patch<ScanRecord>(`/scans/${scanId}`, { status, reason });
+    },
+    onSuccess: () => {
+      ToastMsgs.success("Scan record updated successfully");
+      queryClient.invalidateQueries({ queryKey: ["scans"] });
+    },
+    onError: (err: any) => {
+      ToastMsgs.error(err?.message || "Failed to update scan record");
+    },
+  });
+};
+
+export const useDeleteScanMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (scanId: number) => {
+      return await http.delete<{ status: string; message: string }>(`/scans/${scanId}`);
+    },
+    onSuccess: () => {
+      ToastMsgs.success("Scan record deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["scans"] });
+    },
+    onError: (err: any) => {
+      ToastMsgs.error(err?.message || "Failed to delete scan record");
+    },
+  });
+};

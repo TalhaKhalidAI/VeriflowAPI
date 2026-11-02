@@ -8,6 +8,8 @@ export interface ShiftRecord {
   expires_at?: string | null;
   ended_at?: string | null;
   revoked_reason?: string | null;
+  user_name?: string | null;
+  user_email?: string | null;
 }
 
 export interface ShiftListResponse {

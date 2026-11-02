@@ -36,13 +36,22 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
     const map = new Map<number, { name: string; email: string; role: string }>();
     users.forEach((u) => {
       map.set(u.id, {
-        name: u.name || u.email.split('@')[0] || `User #${u.id}`,
+        name: u.name || u.email?.split('@')[0] || `User #${u.id}`,
         email: u.email,
         role: u.role || 'worker',
       });
     });
+    shifts.forEach((s) => {
+      if (!map.has(s.user_id) && (s.user_name || s.user_email)) {
+        map.set(s.user_id, {
+          name: s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`,
+          email: s.user_email || '',
+          role: 'worker',
+        });
+      }
+    });
     return map;
-  }, [users]);
+  }, [users, shifts]);
 
   // Unique list of users present in shifts or system
   const userOptions = useMemo(() => {
@@ -621,7 +630,7 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
                           </span>
                         ) : (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-700/40 border border-slate-600 text-slate-400 font-medium text-[10px]">
-                            {shift.status.toUpperCase()}
+                            {String(shift?.status || "").toUpperCase()}
                           </span>
                         )}
                       </td>

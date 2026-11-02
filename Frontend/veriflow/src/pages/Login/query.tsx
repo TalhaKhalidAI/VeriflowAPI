@@ -75,7 +75,9 @@ export const useLoginMutation = () => {
       let initialUser = res.user;
 
       try {
-        const profile = await http.get<any>('/users/users_config/me');
+        const profile = await http.get<any>('/users/users_config/me', {
+          headers: token ? { Authorization: "Bearer " + token } : {},
+        });
         if (profile) {
           initialUser = {
             id: profile.id,

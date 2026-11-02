@@ -38,10 +38,18 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (arg1, arg2, arg3) => {
         if (typeof arg1 === 'string') {
           // called as setAuth(token, refreshToken, user)
+          const rawUser = typeof arg3 === 'object' && arg3 ? (arg3 as User) : null;
           set({
             token: arg1,
             refreshToken: typeof arg2 === 'string' ? arg2 : null,
-            user: typeof arg3 === 'object' && arg3 ? (arg3 as User) : null,
+            user: rawUser
+              ? {
+                  ...rawUser,
+                  role: rawUser.role || rawUser.user_role || 'user',
+                  user_role: rawUser.user_role || rawUser.role || 'user',
+                  permissions: rawUser.permissions || {},
+                }
+              : null,
             isAuthenticated: true,
           });
         } else {
@@ -49,8 +57,9 @@ export const useAuthStore = create<AuthState>()(
           set((state) => ({
             user: {
               ...arg1,
-              role: arg1.role || arg1.user_role || 'worker',
-              user_role: arg1.user_role || arg1.role || 'worker',
+              role: arg1.role || arg1.user_role || 'user',
+              user_role: arg1.user_role || arg1.role || 'user',
+              permissions: arg1.permissions || {},
             },
             isAuthenticated: true,
             token: typeof arg2 === 'string' ? arg2 : state.token,
@@ -62,8 +71,9 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: {
             ...user,
-            role: user.role || user.user_role || 'worker',
-            user_role: user.user_role || user.role || 'worker',
+            role: user.role || user.user_role || 'user',
+            user_role: user.user_role || user.role || 'user',
+            permissions: user.permissions || {},
           },
           isAuthenticated: true,
         });

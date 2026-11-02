@@ -196,7 +196,12 @@ class InventoryRuleService(BaseService):
         - Normal User: Returns only rules attached to keys owned by this user.
         """
         if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.INVENTORY_RULES_VIEW):
-            raise PermissionDeniedError("Permission 'inventory_rules.view' is required to list inventory rules")
+            return {
+                "items": [],
+                "limit": limit,
+                "offset": offset,
+                "total": 0,
+            }
 
         if self._is_admin(current_user):
             rules = await self.repo.list_rules(

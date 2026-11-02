@@ -1,0 +1,352 @@
+{
+  "survived": [
+    {
+      "category": "Fuzzing",
+      "name": "Malformed JSON Syntax",
+      "method": "POST",
+      "url": "/app/v1/auth/basic_auth/login",
+      "status": 429,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 10 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Fuzzing",
+      "name": "Empty Body on Required Schema",
+      "method": "POST",
+      "url": "/app/v1/auth/basic_auth/login",
+      "status": 429,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 10 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Fuzzing",
+      "name": "Binary Garbage Payload",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 422,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",0],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting value\"}}],\"request_id\":\"d3bbc06a-768e-4e04-88f7-97ad104cf"
+    },
+    {
+      "category": "Fuzzing",
+      "name": "Extremely Deep Nested JSON",
+      "method": "POST",
+      "url": "/app/v1/rules/evaluate",
+      "status": 401,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"397b0196-297a-4d21-94ea-1a6c82144360\"}"
+    },
+    {
+      "category": "Fuzzing",
+      "name": "Unicode & Null Bytes in JSON",
+      "method": "POST",
+      "url": "/app/v1/auth/basic_auth/signup",
+      "status": 422,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"email\"],\"msg\":\"value is not a valid email address: The email address contains invalid characters before the @-sign: U+0000."
+    },
+    {
+      "category": "Fuzzing",
+      "name": "SQL Injection in Login Body",
+      "method": "POST",
+      "url": "/app/v1/auth/basic_auth/login",
+      "status": 429,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 10 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "Path Traversal in Shift ID",
+      "method": "GET",
+      "url": "/app/v1/shifts/..%2f..%2fetc%2fpasswd",
+      "status": 404,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Not Found\",\"status\":404,\"request_id\":\"3e3a936a-68ae-4407-b22d-b511fe8a5f58\"}"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "SQLi in Shift ID Path",
+      "method": "GET",
+      "url": "/app/v1/shifts/'%20OR%201=1--",
+      "status": 404,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Shift ' OR 1=1-- not found\",\"status\":404,\"request_id\":\"2a540dee-ce96-4f60-a83d-9f38c47cf2cd\"}"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "UUID Overflow / Malformed in Key ID",
+      "method": "GET",
+      "url": "/app/v1/keys/not-a-valid-uuid-12345",
+      "status": 404,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"CryptoKey not-a-valid-uuid-12345 not found\",\"status\":404,\"request_id\":\"98a7af0c-d7e7-4782-b4d9-3784e4bc730c\"}"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "SQLi in Query Param user_id",
+      "method": "GET",
+      "url": "/app/v1/shifts/?user_id=' OR 1=1--",
+      "status": 422,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"int_parsing\",\"loc\":[\"query\",\"user_id\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"' OR 1=1--\"}],\"request_id"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "Extreme Negative Offset",
+      "method": "GET",
+      "url": "/app/v1/shifts/?offset=-999999&limit=-5",
+      "status": 422,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"greater_than_equal\",\"loc\":[\"query\",\"limit\"],\"msg\":\"Input should be greater than or equal to 1\",\"input\":\"-5\",\"ctx\":{\"ge\":1}},{\"type\":\"greater_than_equal"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "Extreme Large Limit",
+      "method": "GET",
+      "url": "/app/v1/shifts/?limit=99999999",
+      "status": 422,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"less_than_equal\",\"loc\":[\"query\",\"limit\"],\"msg\":\"Input should be less than or equal to 100\",\"input\":\"99999999\",\"ctx\":{\"le\":100}}],\"request_id\":\"c0e720e6"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "String where Int expected in limit",
+      "method": "GET",
+      "url": "/app/v1/shifts/?limit=drop_table",
+      "status": 422,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"int_parsing\",\"loc\":[\"query\",\"limit\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"drop_table\"}],\"request_id\":"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Missing Authorization Header",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"No authentication token found\",\"status\":401,\"request_id\":\"3c2db168-b307-4129-96f3-143da81ce057\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Bearer with Empty Token",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"No authentication token found\",\"status\":401,\"request_id\":\"9da9c7b5-ca4a-42b9-ad1b-c62418c91401\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Bearer with Garbage String",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"Invalid token\",\"status\":401,\"request_id\":\"350b5a61-3ae0-4754-9b3d-a2447bcea17a\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Alg: None Signature Bypass Attack",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"Invalid token\",\"status\":401,\"request_id\":\"9e275fcc-9b1c-49e0-a063-151f2029a343\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Tampered JWT Signature Attack",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"Invalid token\",\"status\":401,\"request_id\":\"466939af-7949-4d1f-8872-9666c0a7f188\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Symmetric Secret Guess (HMAC Confusion)",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"Invalid token\",\"status\":401,\"request_id\":\"0c50582d-7093-46b2-8a4f-789287682c37\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Disabling Admin Account",
+      "method": "POST",
+      "url": "/app/v1/admin/admin_access/account/disable/1",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"657434df-ff3d-4c38-b740-3b1fc9e53b99\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Deleting Admin Account",
+      "method": "DELETE",
+      "url": "/app/v1/admin/admin_access/account/1",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"cbddc691-6fcc-49c2-a871-d14dae41eca0\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Setting Permissions",
+      "method": "POST",
+      "url": "/app/v1/admin/admin_access/set_permissions",
+      "status": 429,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Exporting Private Key",
+      "method": "GET",
+      "url": "/app/v1/keys/123e4567-e89b-12d3-a456-426614174000/export-private",
+      "status": 429,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Rotating Server Keys",
+      "method": "POST",
+      "url": "/app/v1/keys/rotate",
+      "status": 429,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Revoking Shift 1",
+      "method": "POST",
+      "url": "/app/v1/shifts/123e4567-e89b-12d3-a456-426614174000/revoke",
+      "status": 429,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Triggering Bulk Shift Expiry",
+      "method": "POST",
+      "url": "/app/v1/shifts/expire-old",
+      "status": 429,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Starting Shift for Admin",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 429,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Shift Duration = 0 hours",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 429,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Shift Duration = -5 hours",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 429,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Shift Duration = 999999 hours",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 429,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Start Shift for Non-Existent User 999999",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 429,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Checkout Shift with Non-Existent UUID",
+      "method": "POST",
+      "url": "/app/v1/shifts/00000000-0000-0000-0000-000000000000/checkout",
+      "status": 429,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Checkout My Shift when No Active Shift",
+      "method": "POST",
+      "url": "/app/v1/shifts/checkout",
+      "status": 429,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Sync Empty Scans Array",
+      "method": "POST",
+      "url": "/app/v1/scans/shifts/00000000-0000-0000-0000-000000000000/sync",
+      "status": 429,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Create Rule with Empty Name",
+      "method": "POST",
+      "url": "/app/v1/rules/",
+      "status": 429,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Verify Invalid RS256 Token String",
+      "method": "POST",
+      "url": "/app/v1/keys/tokens/verify",
+      "status": 429,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"rate_limit_exceeded\",\"message\":\"Too many requests. Limit: 100 per 60s.\",\"retry_after\":33}"
+    },
+    {
+      "category": "Concurrency",
+      "name": "Atomic shift creation",
+      "status": 409,
+      "snippet": "1 active, 0 properly rejected with 409"
+    },
+    {
+      "category": "Rate Limiting",
+      "name": "Rapid burst resilience",
+      "status": 200,
+      "snippet": "60 passed, 0 rate limited"
+    }
+  ],
+  "broken": [],
+  "warnings": [
+    {
+      "category": "Fuzzing",
+      "name": "1MB Payload Buffer",
+      "method": "POST",
+      "url": "/app/v1/scans/",
+      "status": 413,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Request body too large\",\"max_bytes\":1048576,\"max_human\":\"1.00 MB\"}"
+    }
+  ]
+}

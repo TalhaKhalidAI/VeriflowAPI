@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, Optional
 
 from App.core.qr_utils import generate_qr_png_bytes
+from App.core.RedisConnector import redis_client
 
 from App.core.Connector import get_db
 from App.core.LoggingInit import get_core_logger
@@ -166,7 +167,18 @@ async def start_shift(
             include_rules=should_include_rules,
         )
         if qr_only:
-            png_bytes = generate_qr_png_bytes(result["shift_token"])
+            try:
+                png_bytes = generate_qr_png_bytes(result["shift_token"])
+            except Exception as e:
+                try:
+                    c = await redis_client.ensure_connected()
+                    await c.delete(f"shift:active:user:{result['shift']['user_id']}")
+                except Exception:
+                    pass
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Shift token too large for QR rendering ({e}). Uncheck 'Embed Rules' or use JSON mode.",
+                )
             return Response(
                 content=png_bytes,
                 media_type="image/png",

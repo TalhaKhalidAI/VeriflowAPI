@@ -81,13 +81,16 @@ async def list_keys(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status ('active', 'revoked')"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: Dict[str, Any] = Depends(
-        require_permission([Permission.KEYS_VIEW], mode="any", bypass_admin=True)
-    ),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     service = CryptoKeyService(db)
-    return await service.list_keys(status=status_filter, limit=limit, offset=offset)
+    return await service.list_keys(
+        current_user=current_user,
+        status=status_filter,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @crypto_keys_router.get(
@@ -98,16 +101,16 @@ async def list_keys(
 )
 async def get_key_by_id(
     key_id: str,
-    current_user: Dict[str, Any] = Depends(
-        require_permission([Permission.KEYS_VIEW], mode="any", bypass_admin=True)
-    ),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     service = CryptoKeyService(db)
     try:
-        return await service.get_key_by_id(key_id)
+        return await service.get_key_by_id(key_id, current_user=current_user)
     except CryptoKeyNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
 @crypto_keys_router.get(

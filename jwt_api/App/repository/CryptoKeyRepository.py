@@ -113,6 +113,7 @@ class CryptoKeyRepository:
     async def list_keys(
         self,
         status: Optional[str] = None,
+        created_by: Optional[int] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> List[CryptoKeyModel]:
@@ -120,6 +121,8 @@ class CryptoKeyRepository:
         stmt = select(CryptoKeyModel).order_by(desc(CryptoKeyModel.created_at))
         if status:
             stmt = stmt.where(CryptoKeyModel.status == status)
+        if created_by is not None:
+            stmt = stmt.where(CryptoKeyModel.created_by == created_by)
 
         stmt = stmt.limit(limit).offset(offset)
         result = await self.session.execute(stmt)

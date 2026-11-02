@@ -26,7 +26,7 @@ export function RulesMatrixChart({ rules, users }: RulesMatrixChartProps) {
       if (currentUser) {
         return [{
           id: Number(currentUser.id) || 1,
-          name: currentUser.name || currentUser.email.split('@')[0] || 'My Account',
+          name: currentUser.name || currentUser?.email?.split('@')[0] || 'My Account',
           email: currentUser.email,
           role: currentUser.role || 'user',
           user_role: currentUser.user_role || 'user',
@@ -112,7 +112,7 @@ export function RulesMatrixChart({ rules, users }: RulesMatrixChartProps) {
 
   // ECharts Heatmap Option
   const heatmapOption = useMemo(() => {
-    const userLabels = filteredUsers.map((u) => u.name || u.email.split('@')[0] || `User #${u.id}`);
+    const userLabels = filteredUsers.map((u) => u.name || u.email?.split('@')[0] || `User #${u.id}`);
     const colLabels = ruleColumns.map((c) => c.label);
 
     return {
@@ -203,7 +203,7 @@ export function RulesMatrixChart({ rules, users }: RulesMatrixChartProps) {
 
   // ECharts Stacked Bar Option (Alternative quantitative view)
   const barOption = useMemo(() => {
-    const userLabels = filteredUsers.map((u) => u.name || u.email.split('@')[0] || `User #${u.id}`);
+    const userLabels = filteredUsers.map((u) => u.name || u.email?.split('@')[0] || `User #${u.id}`);
 
     const activeRulesCount = filteredUsers.map((user) => {
       const perms = user.permissions || {};

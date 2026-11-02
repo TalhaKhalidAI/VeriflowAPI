@@ -17,6 +17,7 @@ from typing import Dict, Any, Optional
 
 from App.core.Connector import get_db
 from App.core.LoggingInit import get_core_logger
+from App.api.dependencies.auth import get_current_user
 from App.core.exceptions import (
     InventoryRuleNotFoundError,
     DuplicateInventoryRuleError,
@@ -59,9 +60,7 @@ async def list_rules(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: Dict[str, Any] = Depends(
-        require_permission([Permission.INVENTORY_RULES_VIEW], mode="any", bypass_admin=True)
-    ),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     service = InventoryRuleService(db)

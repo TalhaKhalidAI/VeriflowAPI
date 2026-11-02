@@ -43,20 +43,29 @@ export function AttendanceChart({ shifts, users }: AttendanceChartProps) {
     const map = new Map<number, { name: string; email: string; role: string }>();
     if (currentUser) {
       map.set(Number(currentUser.id) || 1, {
-        name: currentUser.name || currentUser.email.split('@')[0] || 'My Account',
+        name: currentUser.name || currentUser?.email?.split('@')[0] || 'My Account',
         email: currentUser.email,
         role: currentUser.role || 'worker',
       });
     }
     users.forEach((u) => {
       map.set(u.id, {
-        name: u.name || u.email.split('@')[0] || `User #${u.id}`,
+        name: u.name || u.email?.split('@')[0] || `User #${u.id}`,
         email: u.email,
         role: u.role || 'worker',
       });
     });
+    shifts.forEach((s) => {
+      if (!map.has(s.user_id) && (s.user_name || s.user_email)) {
+        map.set(s.user_id, {
+          name: s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`,
+          email: s.user_email || '',
+          role: 'worker',
+        });
+      }
+    });
     return map;
-  }, [users, currentUser]);
+  }, [users, shifts, currentUser]);
 
   // Build employee list: Non-admin users strictly see only their own account.
   // Admins see only users who actually have shift records in the database.
@@ -113,7 +122,7 @@ export function AttendanceChart({ shifts, users }: AttendanceChartProps) {
       shifts.forEach((s) => {
         if (!s.started_at) return;
         if (!canViewAllShifts && s.user_id !== Number(currentUser?.id)) return;
-        const sDate = s.started_at.split('T')[0];
+        const sDate = s.started_at ? String(s.started_at).split('T')[0] : '';
         const idx = dateKeys.indexOf(sDate);
         if (idx !== -1 && seriesMap.has(s.user_id)) {
           const start = new Date(s.started_at).getTime();

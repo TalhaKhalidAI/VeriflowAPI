@@ -58,12 +58,13 @@ import { CloseRounded as CloseIcon } from '@mui/icons-material';
 
 export function KeysPage() {
   const user = useAuthStore((state) => state.user);
-  const isAdmin = user?.role === 'admin' || user?.user_role === 'admin';
+  const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
+  const canViewKeys = isAdmin || Boolean(user?.permissions?.['keys.view']);
   const canCreateKey = isAdmin || Boolean(user?.permissions?.['keys.create']);
   const canRotateKey = isAdmin || (Boolean(user?.permissions?.['keys.create']) && Boolean(user?.permissions?.['keys.update']));
   const canRevokeKey = isAdmin || Boolean(user?.permissions?.['keys.revoke']);
-  const canIssueToken = isAdmin || Boolean(user?.permissions?.["keys.create"]);
-  const canCreateTags = isAdmin || Boolean(user?.permissions?.["tags.create"]);
+  const canIssueToken = isAdmin || Boolean(user?.permissions?.['keys.create']);
+  const canCreateTags = isAdmin || Boolean(user?.permissions?.['tags.create']);
 
   const { data: keysData, isLoading } = useKeysQuery();
   const { data: jwksData } = useJWKSQuery();
@@ -304,7 +305,7 @@ export function KeysPage() {
     }
   };
 
-  const keys = keysData?.items || [];
+  const keys = canViewKeys ? (keysData?.items || []) : [];
 
   const keyColumns: TableColumn<KeyRecord>[] = [
     {
@@ -316,7 +317,7 @@ export function KeysPage() {
             {k.kid}
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748B' }}>
-            UUID: {k.id.slice(0, 8)}...
+            UUID: {String(k.id || '').slice(0, 8)}...
           </Typography>
         </Box>
       ),
@@ -340,7 +341,7 @@ export function KeysPage() {
       label: 'Status',
       render: (_, k) => (
         <Chip
-          label={k.status.toUpperCase()}
+          label={String(k.status || '').toUpperCase()}
           size="small"
           color={k.status === 'active' ? 'success' : 'error'}
           sx={{ fontWeight: 700, fontSize: 11 }}
@@ -359,15 +360,15 @@ export function KeysPage() {
   ];
 
   const keyActions: TableAction<KeyRecord>[] = [
-    {
+    ...(canViewKeys ? [{
       icon: <VisibilityIcon fontSize="small" />,
       title: 'View Public Key PEM',
-      variant: 'info',
-      onClick: (k) => {
+      variant: 'info' as const,
+      onClick: (k: KeyRecord) => {
         setSelectedKeyForPem(k);
         setPemModalOpen(true);
       },
-    },
+    }] : []),
     ...(isAdmin ? [{
       icon: <SecurityIcon fontSize="small" />,
       title: 'Export Decrypted Private Key (Admin Only)',
@@ -478,13 +479,19 @@ export function KeysPage() {
         </div>
       </Box>
 
+      {!canViewKeys && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          You do not have permission to view cryptographic keys (requires 'keys.view' permission).
+        </Alert>
+      )}
+
       {/* Keys Table */}
       <Table<KeyRecord>
         columns={keyColumns}
         data={keys}
         rowKey="id"
         isLoading={isLoading}
-        emptyMessage="No cryptographic keys generated yet."
+        emptyMessage={canViewKeys ? "No cryptographic keys generated yet." : "No cryptographic keys accessible (keys.view disabled)."}
         actions={keyActions}
         showSearch={true}
         searchPlaceholder="Search keys by name or kid..."

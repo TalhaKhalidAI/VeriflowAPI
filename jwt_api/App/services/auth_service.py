@@ -104,11 +104,15 @@ class AuthService:
             pass
 
         # ── Issue tokens (no MFA or MFA passed) ─────────────────────
+        perms = full_user.permissions if full_user and isinstance(full_user.permissions, dict) else {}
+        u_role = getattr(full_user, "user_role", None) or user["role"]
         return await self.issue_tokens_for_user(
             user_id=user["id"],
             email=user["email"],
             name=user["name"],
-            role=user["role"],
+            role=u_role,
+            user_role=u_role,
+            permissions=perms,
         )
 
     async def issue_tokens_for_user(
@@ -117,9 +121,13 @@ class AuthService:
         email: str,
         name: str,
         role: str,
+        user_role: Optional[str] = None,
+        permissions: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Unchanged — token issuance logic."""
+        """Issue access and refresh tokens including permissions payload."""
         family_id = str(uuid.uuid4())
+        effective_role = user_role or role
+        effective_perms = permissions or {}
 
         access_token = create_access_token(
             data={
@@ -127,7 +135,8 @@ class AuthService:
                 "sub": email,
                 "user_id": user_id,
                 "name": name,
-                "role": role,
+                "role": effective_role,
+                "permissions": effective_perms,
             }
         )
         refresh_token = create_refresh_token(
@@ -165,7 +174,9 @@ class AuthService:
                 "id": user_id,
                 "email": email,
                 "name": name,
-                "role": role,
+                "role": effective_role,
+                "user_role": effective_role,
+                "permissions": effective_perms,
             },
             "access_token": access_token,
             "refresh_token": refresh_token,

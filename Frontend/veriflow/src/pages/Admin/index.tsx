@@ -195,6 +195,12 @@ export const AdminPage: React.FC = () => {
       user_id: permMatrixUser.id,
       permissions: userPerms,
     });
+    if (user && String(user.id) === String(permMatrixUser.id)) {
+      useAuthStore.getState().setUser({
+        ...user,
+        permissions: userPerms,
+      });
+    }
   };
 
   const handleClearUserPerms = async () => {
@@ -255,7 +261,7 @@ export const AdminPage: React.FC = () => {
       label: 'Role',
       render: (_, u) => (
         <Chip
-          label={u.role.toUpperCase()}
+          label={String(u.role || "").toUpperCase()}
           size="small"
           color={u.role === 'admin' ? 'secondary' : 'default'}
           sx={{ fontWeight: 700, fontSize: 11 }}

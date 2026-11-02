@@ -70,7 +70,21 @@ class CryptoKeyService(BaseService):
             "revocation_reason": key.revocation_reason,
         }
 
-    # ================================================================
+    @staticmethod
+    def _is_admin(current_user: Dict[str, Any]) -> bool:
+        role = current_user.get("role") or current_user.get("user_role") or ""
+        return str(role).lower() == "admin"
+
+    @staticmethod
+    def _get_user_id(current_user: Dict[str, Any]) -> int:
+        return current_user.get("user_id") or current_user.get("id")
+
+    @staticmethod
+    def _has_permission(current_user: Dict[str, Any], perm: Permission) -> bool:
+        if CryptoKeyService._is_admin(current_user):
+            return True
+        perms = current_user.get("permissions", {})
+        return bool(perms.get(perm.value if isinstance(perm, Permission) else perm, False))
     # KEY GENERATION & CREATION (CRUD: CREATE)
     # ================================================================
     async def create_key(
@@ -140,11 +154,23 @@ class CryptoKeyService(BaseService):
     # ================================================================
     # READ OPERATIONS (CRUD: READ)
     # ================================================================
-    async def get_key_by_id(self, key_id: str | uuid.UUID) -> Dict[str, Any]:
-        """Fetch a single key by UUID (safe public view)."""
+    async def get_key_by_id(
+        self,
+        key_id: str | uuid.UUID,
+        current_user: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Fetch a single key by UUID (safe public view), enforcing keys.view and ownership."""
         key = await self.repo.get_by_id(key_id)
         if not key:
             raise CryptoKeyNotFoundError(f"CryptoKey {key_id} not found")
+
+        if current_user and not self._is_admin(current_user):
+            if not self._has_permission(current_user, Permission.KEYS_VIEW):
+                raise PermissionDeniedError("Permission 'keys.view' is required to view cryptographic keys")
+            auth_user_id = self._get_user_id(current_user)
+            if key.created_by != auth_user_id:
+                raise PermissionDeniedError("You do not have access to view this cryptographic key")
+
         return self._to_public_dict(key)
 
     async def get_key_by_kid(self, kid: str) -> Dict[str, Any]:
@@ -156,12 +182,34 @@ class CryptoKeyService(BaseService):
 
     async def list_keys(
         self,
+        current_user: Optional[Dict[str, Any]] = None,
         status: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> Dict[str, Any]:
-        """Paginated list of keys for admin dashboard."""
-        keys = await self.repo.list_keys(status=status, limit=limit, offset=offset)
+        """
+        Paginated list of keys:
+        - Admin: lists all keys across all users.
+        - Normal user with keys.view: lists only their own created keys.
+        - Normal user without keys.view: returns empty items (no access to own or others' data).
+        """
+        creator_filter = None
+        if current_user and not self._is_admin(current_user):
+            if not self._has_permission(current_user, Permission.KEYS_VIEW):
+                return {
+                    "items": [],
+                    "limit": limit,
+                    "offset": offset,
+                    "total": 0,
+                }
+            creator_filter = self._get_user_id(current_user)
+
+        keys = await self.repo.list_keys(
+            status=status,
+            created_by=creator_filter,
+            limit=limit,
+            offset=offset,
+        )
         return {
             "items": [self._to_public_dict(k) for k in keys],
             "limit": limit,
@@ -307,7 +355,10 @@ class CryptoKeyService(BaseService):
             - Private key is decrypted in volatile RAM only during signing.
         """
         auth_user_id = current_user.get("user_id") or current_user.get("id")
-        is_admin = current_user.get("role") == "admin"
+        is_admin = current_user.get("role") == "admin" or str(current_user.get("user_role", "")).lower() == "admin"
+
+        if not is_admin and not self._has_permission(current_user, Permission.KEYS_CREATE):
+            raise PermissionDeniedError("Permission 'keys.create' is required to issue cryptographic tokens")
 
         # 1. Resolve Target User
         if target_user_id is not None and target_user_id != auth_user_id:
@@ -362,9 +413,6 @@ class CryptoKeyService(BaseService):
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(minutes=expires_in_minutes)
         user_perms = dict(user.permissions or {})
-        user_perms.setdefault("scans.view.own", True)
-        user_perms.setdefault("scans.create", True)
-        user_perms.setdefault("inventory_rules.view", True)
 
         payload = {
             "sub": user.email,
@@ -533,7 +581,6 @@ class CryptoKeyService(BaseService):
             is_admin
             or user_perms.get(Permission.TAGS_CREATE.value) is True
             or user_perms.get(Permission.KEYS_CREATE.value) is True
-            or user_perms.get(Permission.INVENTORY_RULES_CREATE.value) is True
             or user_perms.get("*") is True
         )
         if not has_permission:

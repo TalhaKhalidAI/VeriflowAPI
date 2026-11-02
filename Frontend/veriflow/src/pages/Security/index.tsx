@@ -185,7 +185,7 @@ export const SecurityPage: React.FC = () => {
                   </Typography>
                   <Typography variant="body1" sx={{ color: '#38BDF8', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
                     {mfaStatus.mfa_method === 'totp' ? <Smartphone fontSize="small" /> : <Mail fontSize="small" />}
-                    {mfaStatus.mfa_method?.toUpperCase()} (Time-based One-Time Password)
+                    {String(mfaStatus?.mfa_method || "").toUpperCase()} (Time-based One-Time Password)
                   </Typography>
                   <Button
                     variant="outlined"

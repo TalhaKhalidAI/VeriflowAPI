@@ -67,6 +67,10 @@ class ScanHistoryService(BaseService):
         if require_perm and not self._has_permission(current_user, require_perm):
             raise PermissionDeniedError(f"Missing required permission: {require_perm.value}")
 
+        # If user has SCANS_VIEW_ANY, they have supervisor privileges to manage scans across all workers
+        if self._has_permission(current_user, Permission.SCANS_VIEW_ANY):
+            return
+
         # Fetch shift to verify user ownership
         shift = await self.shift_repo.get_by_id(scan.shift_id)
         user_id = self._get_user_id(current_user)
@@ -128,6 +132,10 @@ class ScanHistoryService(BaseService):
         is_privileged = self._is_admin(current_user) or self._has_permission(
             current_user, Permission.SCANS_VIEW_ANY
         )
+        can_view_own = (
+            is_privileged
+            or self._has_permission(current_user, Permission.SCANS_VIEW_OWN)
+        )
         user_id = self._get_user_id(current_user)
 
         if shift_id:
@@ -135,19 +143,29 @@ class ScanHistoryService(BaseService):
             if not shift:
                 raise ShiftNotFoundError(f"Shift {shift_id} not found")
 
-            if not is_privileged and shift.user_id != user_id:
-                raise PermissionDeniedError("You do not have access to view scans for this shift")
+            if not is_privileged:
+                if not can_view_own or shift.user_id != user_id:
+                    raise PermissionDeniedError("You do not have access to view scans for this shift")
 
             scans = await self.repo.get_by_shift(
                 shift_id=shift_id, status=status, limit=limit, offset=offset
             )
         elif is_privileged:
+            # Admin or SCANS_VIEW_ANY: view scans across all users/shifts
             scans = await self.repo.get_recent_scans(status=status, limit=limit)
-        else:
-            # Normal user default view: Their own scan history
+        elif can_view_own:
+            # Normal user with SCANS_VIEW_OWN: their own scan history
             scans = await self.repo.get_by_user(
                 user_id=user_id, status=status, limit=limit, offset=offset
             )
+        else:
+            # Neither permission granted: return empty list
+            return {
+                "items": [],
+                "limit": limit,
+                "offset": offset,
+                "total": 0,
+            }
 
         return {
             "items": [self._to_dict(s) for s in scans],

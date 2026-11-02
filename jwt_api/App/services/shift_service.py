@@ -81,7 +81,15 @@ class ShiftService(BaseService):
         return (
             cls._has_permission(current_user, Permission.SHIFTS_VIEW_ANY)
             or cls._has_permission(current_user, Permission.SHIFTS_VIEW_ALL)
-            or cls._has_permission(current_user, Permission.SHIFTS_VIEW)
+        )
+
+    @classmethod
+    def _can_manage_any_shift(cls, current_user: Dict[str, Any]) -> bool:
+        if cls._is_admin(current_user):
+            return True
+        return (
+            cls._can_view_any_shifts(current_user)
+            or cls._has_permission(current_user, Permission.SHIFTS_REVOKE)
         )
 
     @staticmethod
@@ -107,7 +115,12 @@ class ShiftService(BaseService):
         and embeds user permissions, active inventory rules, shift metadata, and key identifier (kid).
         """
         private_pem = decrypt_data(crypto_key.private_key_encrypted)
-        user_perms = dict(user.permissions or {})
+        # Compact permissions to only granted (True) permissions to fit comfortably in QR code standards
+        user_perms = {
+            k: True
+            for k, v in (user.permissions or {}).items()
+            if bool(v)
+        }
         # Mobile app shift operator defaults
         user_perms.setdefault(Permission.SCANS_VIEW_OWN.value, True)
         user_perms.setdefault(Permission.SCANS_CREATE.value, True)
@@ -165,8 +178,8 @@ class ShiftService(BaseService):
 
         # Enforce user assignment rule
         if target_user_id is not None and target_user_id != auth_user_id:
-            if not self._is_admin(current_user):
-                raise PermissionDeniedError("Only administrators can initiate shifts for other workers")
+            if not self._can_manage_any_shift(current_user):
+                raise PermissionDeniedError("Only administrators or supervisors can initiate shifts for other workers")
             assigned_user_id = target_user_id
         else:
             assigned_user_id = auth_user_id
@@ -211,7 +224,12 @@ class ShiftService(BaseService):
         c = await redis_client.ensure_connected()
         acquired = await c.set(redis_shift_lock, "active", nx=True, ex=duration_hours * 3600)
         if not acquired:
-            raise ActiveShiftExistsError(f"User {assigned_user_id} already has an active shift")
+            # Verify against database: if DB has no active shift, the Redis lock was orphaned
+            existing_active = await self.repo.get_active_shift_by_user(assigned_user_id)
+            if existing_active:
+                raise ActiveShiftExistsError(f"User {assigned_user_id} already has an active shift")
+            # Overwrite stale orphaned Redis lock
+            await c.set(redis_shift_lock, "active", ex=duration_hours * 3600)
 
         try:
             shift = await self.repo.create_shift(
@@ -265,8 +283,8 @@ class ShiftService(BaseService):
             raise PermissionDeniedError("Permission 'shifts.create' is required to reissue shift tokens")
 
         if target_user_id is not None and target_user_id != auth_user_id:
-            if not self._is_admin(current_user):
-                raise PermissionDeniedError("Only administrators can reissue shift tokens for other workers")
+            if not self._can_manage_any_shift(current_user):
+                raise PermissionDeniedError("Only administrators or supervisors can reissue shift tokens for other workers")
             assigned_user_id = target_user_id
         else:
             assigned_user_id = auth_user_id
@@ -294,8 +312,8 @@ class ShiftService(BaseService):
         if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CREATE):
             raise PermissionDeniedError("Permission 'shifts.create' is required to reissue shift tokens")
 
-        if not self._is_admin(current_user) and shift.user_id != auth_user_id:
-            raise PermissionDeniedError("Cannot reissue token for a shift belonging to another user")
+        if not self._can_manage_any_shift(current_user) and shift.user_id != auth_user_id:
+            raise PermissionDeniedError("Cannot reissue token for a shift belonging to another user without supervisor privileges")
 
         if shift.status != "active":
             raise InvalidShiftStateError(
@@ -366,8 +384,8 @@ class ShiftService(BaseService):
         if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CHECKOUT):
             raise PermissionDeniedError("Permission 'shifts.checkout' is required to checkout of a work shift")
 
-        if not self._is_admin(current_user) and shift.user_id != auth_user_id:
-            raise PermissionDeniedError("Cannot checkout a shift belonging to another user")
+        if not self._can_manage_any_shift(current_user) and shift.user_id != auth_user_id:
+            raise PermissionDeniedError("Cannot checkout a shift belonging to another user without supervisor privileges")
 
         if shift.status != "active":
             raise InvalidShiftStateError(
@@ -435,17 +453,56 @@ class ShiftService(BaseService):
             raise ShiftNotFoundError(f"Shift {shift_id} not found")
 
         auth_user_id = self._get_user_id(current_user)
-        if not self._is_admin(current_user) and shift.user_id != auth_user_id:
-            if not self._can_view_any_shifts(current_user):
+        is_owner = shift.user_id == auth_user_id
+        is_privileged = self._can_view_any_shifts(current_user)
+
+        if not is_privileged:
+            can_view_own = self._has_permission(
+                current_user, Permission.SHIFTS_VIEW
+            ) or self._has_permission(
+                current_user, Permission.SHIFTS_VIEW_OWN
+            )
+            if not is_owner or not can_view_own:
                 raise PermissionDeniedError("You do not have permission to view this shift")
 
-        return self._to_dict(shift)
+        enriched = await self._attach_user_info([self._to_dict(shift)])
+        return enriched[0]
+
+    async def _attach_user_info(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Attach user_name / user_email to shift dicts using a single batched user lookup."""
+        user_ids = list({i["user_id"] for i in items if i.get("user_id") is not None})
+        if not user_ids:
+            return items
+        try:
+            users = await self.user_repo.get_by_ids(user_ids)
+        except Exception as e:
+            logger.warning(f"Could not resolve user names for shifts: {e}")
+            return items
+        lookup = {u.id: u for u in users}
+        for i in items:
+            u = lookup.get(i["user_id"])
+            if u:
+                i["user_name"] = getattr(u, "name", None)
+                i["user_email"] = getattr(u, "email", None)
+        return items
 
     async def get_my_active_shift(self, current_user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Worker self-service lookup for their currently active shift."""
+        can_view_self = (
+            self._is_admin(current_user)
+            or self._can_view_any_shifts(current_user)
+            or self._has_permission(current_user, Permission.SHIFTS_VIEW)
+            or self._has_permission(current_user, Permission.SHIFTS_VIEW_OWN)
+        )
+        if not can_view_self:
+            return None
+
         user_id = self._get_user_id(current_user)
         shift = await self.repo.get_active_shift_by_user(user_id)
-        return self._to_dict(shift) if shift else None
+        if not shift:
+            return None
+        enriched = await self._attach_user_info([self._to_dict(shift)])
+        return enriched[0]
 
     async def list_shifts(
         self,
@@ -457,21 +514,29 @@ class ShiftService(BaseService):
     ) -> Dict[str, Any]:
         """
         List shift history:
-        - If target_user_id is None:
-            - Admin or SHIFTS_VIEW: returns shifts across all users (active and inactive, or active only if active_only=True).
-            - Normal user: returns their own shifts.
-        - If target_user_id is specified:
-            - Admin or SHIFTS_VIEW: filters by target_user_id.
-            - Normal user: restricted to their own user_id.
-        - active_only: If True, filters for status == 'active'. If False, returns all (active and inactive).
+        - If admin or SHIFTS_VIEW_ANY/ALL: returns shifts across all users.
+        - If SHIFTS_VIEW/OWN: returns only their own shifts.
+        - If shifts.view is disabled: returns empty items (does not expose self data).
         """
         is_privileged = self._can_view_any_shifts(current_user)
+        can_view_self = (
+            is_privileged
+            or self._has_permission(current_user, Permission.SHIFTS_VIEW)
+            or self._has_permission(current_user, Permission.SHIFTS_VIEW_OWN)
+        )
         auth_user_id = self._get_user_id(current_user)
 
         if is_privileged:
             query_user_id = target_user_id
-        else:
+        elif can_view_self:
             query_user_id = auth_user_id
+        else:
+            return {
+                "items": [],
+                "limit": limit,
+                "offset": offset,
+                "total": 0,
+            }
 
         shifts, total_count = await self.repo.list_shifts_filtered(
             user_id=query_user_id,
@@ -481,7 +546,7 @@ class ShiftService(BaseService):
         )
 
         return {
-            "items": [self._to_dict(s) for s in shifts],
+            "items": await self._attach_user_info([self._to_dict(s) for s in shifts]),
             "limit": limit,
             "offset": offset,
             "total": total_count,
