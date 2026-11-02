@@ -17,7 +17,7 @@ export const PERMISSION_MAP: Record<string, PermissionRequirement> = {
   rules: { permissions: ['inventory_rules.view', 'inventory_rules.create'], mode: 'any' },
   shifts: { permissions: ['shifts.view', 'shifts.view.any', 'shifts.view.all', 'shifts.view.own', 'shifts.create'], mode: 'any' },
   scans: { permissions: ['scans.view.any', 'scans.view.own', 'scans.create'], mode: 'any' },
-  admin: { permissions: ['admin.access'], mode: 'all', adminOnly: true },
+  admin: { permissions: ['admin.access', 'admin.users.view', 'admin.users', 'user.view.any', 'user.view.self', 'user.update.self'], mode: 'any' },
   security: { permissions: [], mode: 'any' },
 };
 

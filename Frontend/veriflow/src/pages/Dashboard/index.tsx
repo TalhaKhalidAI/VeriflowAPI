@@ -48,10 +48,10 @@ export function DashboardPage() {
 
   // If user has shifts.view permission (or admin), they can view all shifts telemetry; else strictly only their own
   const userShifts = useMemo(() => {
-    const items = shiftsData?.items || [];
+    const items = Array.isArray(shiftsData?.items) ? shiftsData.items : [];
     if (canViewOtherShifts) return items;
     const currentId = Number(user?.id);
-    return items.filter((s) => s.user_id === currentId);
+    return items.filter((s: any) => s && s.user_id === currentId);
   }, [shiftsData, canViewOtherShifts, user?.id]);
 
   // Only permit tabs the user actually has authorization to view

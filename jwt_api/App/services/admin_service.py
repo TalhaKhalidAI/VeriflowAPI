@@ -77,6 +77,7 @@ class AdminService:
         has_self_update_permission = (
             current_user_perms.get("user.update.self", False)
             or current_user_perms.get("user.update.profile", False)
+            or current_user_perms.get("user.update.email", False)
         )
 
         if is_admin or has_admin_update_permission:

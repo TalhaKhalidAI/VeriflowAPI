@@ -196,7 +196,7 @@ export function ShiftsPage() {
             {s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`}
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748B', fontFamily: 'monospace' }}>
-            {s.id.slice(0, 8)}...
+            {s?.id ? String(s.id).slice(0, 8) : "N/A"}...
           </Typography>
         </Box>
       ),

@@ -291,7 +291,7 @@ export function RulesPage() {
       render: (_, ar) => (
         <Chip
           size="small"
-          label={ar.key_id ? `Key: ${ar.key_id.slice(0, 8)}...` : 'GLOBAL'}
+          label={ar?.key_id ? `Key: ${String(ar.key_id).slice(0, 8)}...` : 'GLOBAL'}
           sx={{
             fontSize: 10,
             bgcolor: ar.key_id ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 255, 255, 0.06)',

@@ -5,6 +5,7 @@ import { validateUrl } from "./schema"
 import { axiosConfig } from "./config"
 import { ToastMsgs } from "../toastUtils"
 import { useAuthStore } from "../../store/authStore"
+import { useAppStore } from "../../store/appStore"
 import { getErrorMessage } from "./errorHandler" // ✅ Import the functions
 
 // Extend Axios types
@@ -86,6 +87,10 @@ axiosInstance.interceptors.request.use(
 // ============================================
 axiosInstance.interceptors.response.use(
   (response) => {
+    // Clear offline status on successful response
+    if (useAppStore.getState().isApiOffline) {
+      useAppStore.getState().setApiOffline(false);
+    }
     // 🚨 GLOBAL SAFETY NET: Prevent fake successes if the API URL is missing 
     // and the frontend static server returns index.html (200 OK) instead of real JSON data.
     if (typeof response.data === 'string' && (response.data.trim().startsWith('<!DOCTYPE html>') || response.data.trim().startsWith('<html'))) {
@@ -121,11 +126,12 @@ axiosInstance.interceptors.response.use(
     const url = originalRequest?.url || ''
 
     // ============================================
-    // 1️⃣ NETWORK ERROR
+    // 1️⃣ NETWORK ERROR / BACKEND OFFLINE
     // ============================================
-    if (!error.response) {
+    if (!error.response || error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+      useAppStore.getState().setApiOffline(true, 'Backend API server is currently unreachable. Check network or server status.');
       if (!originalRequest?.skipToast) {
-        ToastMsgs.error('Network error. Please check your connection.')
+        ToastMsgs.error('Network error. Backend API is currently unreachable.')
       }
       return Promise.reject({
         status: 0,
@@ -136,6 +142,12 @@ axiosInstance.interceptors.response.use(
 
     const status = error.response?.status
     const data = error.response?.data
+
+    if (status === 502 || status === 503 || status === 504) {
+      useAppStore.getState().setApiOffline(true, `Backend service temporarily unavailable (HTTP ${status}). Server may be restarting.`);
+    } else if (status && status < 500 && useAppStore.getState().isApiOffline) {
+      useAppStore.getState().setApiOffline(false);
+    }
 
     // ============================================
     // 2️⃣ USE YOUR ERROR HANDLER ✅

@@ -99,6 +99,7 @@ async def update_account(
                 Permission.ADMIN_USERS_PROMOTE,
                 Permission.USER_UPDATE_SELF,
                 Permission.USER_UPDATE_PROFILE,
+                Permission.USER_UPDATE_EMAIL,
             ],
             mode="any",
             bypass_admin=False,
@@ -660,7 +661,14 @@ async def get_users_permissions(
     include_user_info: bool = Query(False),
     current_user: Dict[str, Any] = Depends(
         require_permission(
-            required_permissions=[Permission.ADMIN_USERS_PROMOTE, Permission.ADMIN_USERS_VIEW],
+            required_permissions=[
+                Permission.ADMIN_USERS_PROMOTE,
+                Permission.ADMIN_USERS_VIEW,
+                Permission.ADMIN_ACCESS,
+                Permission.GET_USER_ASSIGNED_PERMISSIONS,
+                Permission.USER_VIEW_SELF,
+                Permission.USER_VIEW_ANY,
+            ],
             mode="any",
             bypass_admin=False,
         )
@@ -669,6 +677,24 @@ async def get_users_permissions(
 ):
     req_id = getattr(request.state, "request_id", "-")
     try:
+        cur_role = current_user.get("role")
+        cur_id = current_user.get("id")
+        cur_perms = current_user.get("permissions") or {}
+        if isinstance(cur_perms, str):
+            try:
+                import json
+                cur_perms = json.loads(cur_perms)
+            except Exception:
+                cur_perms = {}
+        is_admin = cur_role == "admin"
+        can_view_any = is_admin or cur_perms.get("admin.users.promote") or cur_perms.get("admin.users.view") or cur_perms.get("admin.access") or cur_perms.get("user.view.any")
+
+        # If user does not have view-any permissions, strictly restrict to their own account
+        if not can_view_any:
+            if user_id is not None and user_id != cur_id:
+                raise HTTPException(status_code=403, detail="You can only view your own permissions")
+            user_id = cur_id
+
         repo = UserRepository(db)
         data = await repo.get_user_permission_db(
             user_id=user_id,

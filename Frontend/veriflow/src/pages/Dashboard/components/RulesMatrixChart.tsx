@@ -37,7 +37,7 @@ export function RulesMatrixChart({ rules, users }: RulesMatrixChartProps) {
       }
       return [];
     }
-    let list: AdminUser[] = users.length > 0 ? users : ([
+    let list: AdminUser[] = (users || []).length > 0 ? users : ([
       { id: 1, name: 'Admin Root', email: 'admin@example.com', role: 'admin', user_role: 'admin', disabled: false, is_deleted: false, permissions: { 'shifts.create': true, 'scans.create': true, 'scans.view': true, 'rules.view': true, 'keys.view': true } },
       { id: 2, name: 'Operator Talha', email: 'talha@veriflow.local', role: 'user', user_role: 'user', disabled: false, is_deleted: false, permissions: { 'shifts.create': true, 'scans.create': true, 'scans.view': true } },
       { id: 3, name: 'Auditor Maya', email: 'maya@veriflow.local', role: 'user', user_role: 'user', disabled: false, is_deleted: false, permissions: { 'scans.view': true, 'rules.view': true } },
@@ -56,7 +56,8 @@ export function RulesMatrixChart({ rules, users }: RulesMatrixChartProps) {
     const list: { key: string; label: string; type: 'rule' | 'permission'; desc: string }[] = [];
 
     // Add active inventory rules
-    rules.forEach((r) => {
+    (rules || []).forEach((r) => {
+      if (!r) return;
       list.push({
         key: `rule_${r.id}`,
         label: r.rule_name || r.matching_claim_key,
@@ -95,7 +96,7 @@ export function RulesMatrixChart({ rules, users }: RulesMatrixChartProps) {
           value = isAdmin || perms[col.key] === true ? 1 : 0;
         } else {
           // Inventory rules are globally active or applicable to shift sessions
-          const matchingRule = rules.find((r) => `rule_${r.id}` === col.key);
+          const matchingRule = (rules || []).find((r) => r && `rule_${r.id}` === col.key);
           if (matchingRule) {
             value = matchingRule.is_active ? 1 : 0;
           } else {

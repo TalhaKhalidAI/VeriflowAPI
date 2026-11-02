@@ -48,14 +48,16 @@ export function AttendanceChart({ shifts, users }: AttendanceChartProps) {
         role: currentUser.role || 'worker',
       });
     }
-    users.forEach((u) => {
+    (users || []).forEach((u) => {
+      if (!u) return;
       map.set(u.id, {
         name: u.name || u.email?.split('@')[0] || `User #${u.id}`,
         email: u.email,
         role: u.role || 'worker',
       });
     });
-    shifts.forEach((s) => {
+    (shifts || []).forEach((s) => {
+      if (!s) return;
       if (!map.has(s.user_id) && (s.user_name || s.user_email)) {
         map.set(s.user_id, {
           name: s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`,
@@ -114,12 +116,14 @@ export function AttendanceChart({ shifts, users }: AttendanceChartProps) {
 
       // Initialize series per employee
       const seriesMap = new Map<number, number[]>();
-      employees.forEach((emp) => {
+      (employees || []).forEach((emp) => {
+        if (!emp) return;
         seriesMap.set(emp.id, new Array(categories.length).fill(0));
       });
 
       // Sum actual shift hours strictly from shifts in database
-      shifts.forEach((s) => {
+      (shifts || []).forEach((s) => {
+      if (!s) return;
         if (!s.started_at) return;
         if (!canViewAllShifts && s.user_id !== Number(currentUser?.id)) return;
         const sDate = s.started_at ? String(s.started_at).split('T')[0] : '';
@@ -155,12 +159,14 @@ export function AttendanceChart({ shifts, users }: AttendanceChartProps) {
       }
 
       const seriesMap = new Map<number, number[]>();
-      employees.forEach((emp) => {
+      (employees || []).forEach((emp) => {
+        if (!emp) return;
         seriesMap.set(emp.id, new Array(24).fill(0));
       });
 
       // Populate actual shift distribution by active hours
-      shifts.forEach((s) => {
+      (shifts || []).forEach((s) => {
+      if (!s) return;
         if (!s.started_at) return;
         if (!canViewAllShifts && s.user_id !== Number(currentUser?.id)) return;
         const start = new Date(s.started_at);
@@ -207,11 +213,13 @@ export function AttendanceChart({ shifts, users }: AttendanceChartProps) {
     ];
 
     const seriesMap = new Map<number, number[]>();
-    employees.forEach((emp) => {
+    (employees || []).forEach((emp) => {
+        if (!emp) return;
       seriesMap.set(emp.id, new Array(categories.length).fill(0));
     });
 
-    shifts.forEach((s) => {
+    (shifts || []).forEach((s) => {
+      if (!s) return;
       if (!s.started_at) return;
       if (!canViewAllShifts && s.user_id !== Number(currentUser?.id)) return;
       const start = new Date(s.started_at);

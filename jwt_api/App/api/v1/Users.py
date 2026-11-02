@@ -27,6 +27,8 @@ from App.api.dependencies.auth import (
     cookie_scheme,
     oauth2_scheme,
 )
+from App.models.Permissions import Permission
+from App.api.dependencies.permissions import require_permission
 
 user_router = APIRouter(prefix="/users_config", tags=["Users"])
 logger = get_core_logger(__name__)
@@ -177,7 +179,19 @@ async def list_users(
     show_disabled: bool = Query(True, description="Show/include disabled user accounts"),
     show_deleted: bool = Query(False, description="Show/include deleted user accounts"),
     show_permissions: bool = Query(True, description="Show user permissions in response"),
-    current_user: Dict[str, Any] = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(
+        require_permission(
+            [
+                Permission.ADMIN_ACCESS,
+                Permission.ADMIN_USERS_VIEW,
+                Permission.ADMIN_USERS,
+                Permission.USER_VIEW_ANY,
+            ],
+            mode="any",
+            bypass_admin=False,
+            additional_dependency=get_current_active_user,
+        )
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """List users (admin only)."""

@@ -34,14 +34,16 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
   // Map user ID to details
   const userMap = useMemo(() => {
     const map = new Map<number, { name: string; email: string; role: string }>();
-    users.forEach((u) => {
+    (users || []).forEach((u) => {
+      if (!u) return;
       map.set(u.id, {
         name: u.name || u.email?.split('@')[0] || `User #${u.id}`,
         email: u.email,
         role: u.role || 'worker',
       });
     });
-    shifts.forEach((s) => {
+    (shifts || []).forEach((s) => {
+      if (!s) return;
       if (!map.has(s.user_id) && (s.user_name || s.user_email)) {
         map.set(s.user_id, {
           name: s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`,
@@ -75,7 +77,8 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
   const filteredShifts = useMemo(() => {
     const now = new Date().getTime();
 
-    return shifts.filter((s) => {
+    return (shifts || []).filter((s) => {
+      if (!s) return false;
       // 0. Non-admin isolation: strictly only allow current user's shifts
       if (!canViewOthers && s.user_id !== Number(currentUser?.id)) {
         return false;
@@ -90,7 +93,7 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const dev = (s.device_id || '').toLowerCase();
-        const id = s.id.toLowerCase();
+        const id = String(s?.id || "").toLowerCase();
         const name = (userMap.get(s.user_id)?.name || '').toLowerCase();
         if (!dev.includes(q) && !id.includes(q) && !name.includes(q)) {
           return false;
@@ -142,7 +145,7 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
   };
 
   // Summary counts
-  const totalCount = filteredShifts.length;
+  const totalCount = (filteredShifts || []).length;
   const activeCount = filteredShifts.filter((s) => s.status === 'active').length;
   const endedCount = filteredShifts.filter((s) => s.status === 'ended' || Boolean(s.ended_at)).length;
 

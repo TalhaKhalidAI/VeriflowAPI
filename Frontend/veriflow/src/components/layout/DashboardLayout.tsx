@@ -30,11 +30,15 @@ import {
   LogoutRounded as LogoutIcon,
   AdminPanelSettingsRounded as AdminIcon,
   LockResetRounded as Security2FAIcon,
+  ManageAccountsRounded as AccountSettingsIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { useAppStore } from '../../store/appStore';
 import { checkPermission, PERMISSION_MAP } from '../../HOCS/withPermissions';
 import { useActiveShiftQuery } from '../../pages/Shifts/query';
+import { useQueryClient } from '@tanstack/react-query';
+import { ToastMsgs } from '../../api/toastUtils';
+import { AccountModal } from '../AccountModal';
 import { http } from '../../api/http/https';
 
 const DRAWER_WIDTH = 260;
@@ -122,6 +126,36 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
   const toggleSidebar = useAppStore((state) => state.toggleSidebar);
   const mobileSidebarOpen = useAppStore((state) => state.mobileSidebarOpen);
   const setMobileSidebarOpen = useAppStore((state) => state.setMobileSidebarOpen);
+  const isApiOffline = useAppStore((state) => state.isApiOffline);
+  const apiOfflineMessage = useAppStore((state) => state.apiOfflineMessage);
+  const setApiOffline = useAppStore((state) => state.setApiOffline);
+
+  const queryClient = useQueryClient();
+  const [isCheckingHealth, setIsCheckingHealth] = React.useState(false);
+  const [accountModalOpen, setAccountModalOpen] = React.useState(false);
+
+  const handleRetryApi = React.useCallback(async () => {
+    setIsCheckingHealth(true);
+    try {
+      await http.get('/health', { skipToast: true });
+      setApiOffline(false);
+      queryClient.invalidateQueries();
+      ToastMsgs.success('API connection restored!');
+    } catch {
+      // Still offline
+    } finally {
+      setIsCheckingHealth(false);
+    }
+  }, [setApiOffline, queryClient]);
+
+  // Periodic health ping when offline to auto-recover
+  React.useEffect(() => {
+    if (!isApiOffline) return;
+    const interval = setInterval(() => {
+      handleRetryApi();
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [isApiOffline, handleRetryApi]);
 
   // Continuously sync user permissions and role with the server
   React.useEffect(() => {
@@ -366,7 +400,7 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
       >
         {sidebarOpen ? (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, overflow: 'hidden' }}>
+            <Box onClick={() => setAccountModalOpen(true)} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, overflow: 'hidden', cursor: 'pointer', borderRadius: 1.5, p: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }}>
               <Avatar
                 src={user?.profile_pic || undefined}
                 sx={{
@@ -399,18 +433,32 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
                 </Typography>
               </Box>
             </Box>
-            <Tooltip title="Log out">
-              <IconButton size="small" onClick={handleLogout} sx={{ color: '#94A3B8', '&:hover': { color: '#EF4444' } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Tooltip title="Account Governance & Profile">
+                <IconButton size="small" onClick={() => setAccountModalOpen(true)} sx={{ color: '#94A3B8', '&:hover': { color: '#FACC15' } }}>
+                  <AccountSettingsIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Log out">
+                <IconButton size="small" onClick={handleLogout} sx={{ color: '#94A3B8', '&:hover': { color: '#EF4444' } }}>
+                  <LogoutIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          </Box>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Tooltip title="Account Governance & Profile" placement="right">
+              <IconButton onClick={() => setAccountModalOpen(true)} sx={{ color: '#94A3B8', mx: 'auto', display: 'block', '&:hover': { color: '#FACC15' } }}>
+                <AccountSettingsIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Log out" placement="right">
+              <IconButton onClick={handleLogout} sx={{ color: '#94A3B8', mx: 'auto', display: 'block', '&:hover': { color: '#EF4444' } }}>
                 <LogoutIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           </Box>
-        ) : (
-          <Tooltip title="Log out" placement="right">
-            <IconButton onClick={handleLogout} sx={{ color: '#94A3B8', mx: 'auto', display: 'block', '&:hover': { color: '#EF4444' } }}>
-              <LogoutIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
         )}
       </Box>
     </Box>
@@ -533,11 +581,22 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
                 </div>
               )}
 
-              {/* API Online Status */}
-              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[11px] font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="hidden xs:inline">API</span> ONLINE
-              </div>
+              {/* API Online/Offline Telemetry Badge */}
+              {isApiOffline ? (
+                <div
+                  onClick={handleRetryApi}
+                  className="cursor-pointer inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-rose-500/15 border border-rose-500/50 text-rose-300 font-mono text-[11px] font-bold animate-pulse hover:bg-rose-500/25 transition-all"
+                  title="API is currently offline. Click to test reconnection."
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                  <span className="hidden xs:inline">API</span> OFFLINE
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[11px] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="hidden xs:inline">API</span> ONLINE
+                </div>
+              )}
 
               {/* User Role Badge */}
               <div
@@ -553,11 +612,40 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
           </Toolbar>
         </AppBar>
 
+        {/* API Offline Persistent Warning Banner */}
+        {isApiOffline && (
+          <div className="mx-3 sm:mx-6 mt-3 p-3.5 rounded-xl bg-rose-950/80 border border-rose-500/60 text-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-rose-950/40 animate-fade-in">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl select-none">⚠️</span>
+              <div>
+                <div className="font-bold text-white text-sm font-mono flex items-center gap-2">
+                  <span>BACKEND API UNREACHABLE</span>
+                  <span className="badge badge-xs badge-error font-mono font-bold">OFFLINE</span>
+                </div>
+                <p className="text-xs text-rose-200/90 mt-0.5">
+                  {apiOfflineMessage || 'The backend service is currently offline or unreachable. Existing views remain operational; retrying connection in background.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              <button
+                onClick={handleRetryApi}
+                disabled={isCheckingHealth}
+                className="btn btn-xs btn-error text-white font-mono font-bold gap-1 shadow-md hover:scale-105 transition-all"
+              >
+                {isCheckingHealth ? 'Pinging...' : '↻ Reconnect'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Dynamic Route View */}
         <Box sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2.5, md: 3 } }}>
           {children || <Outlet />}
         </Box>
       </Box>
+
+      <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
 
       {/* DaisyUI Mobile Bottom Navigation Dock (Responsive Android look) */}
       <div className="btm-nav btm-nav-md md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0F172A] border-t border-[#1E293B] shadow-2xl backdrop-blur-lg">

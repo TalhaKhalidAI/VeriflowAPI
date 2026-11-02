@@ -25,12 +25,47 @@ export const useAdminUsersQuery = (options: UserQueryOptions & { enabled?: boole
   const { show_disabled = true, show_deleted = false, show_permissions = true, enabled } = options;
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
-  const isQueryEnabled = enabled !== undefined ? (enabled && isAdmin) : isAdmin;
+  const canViewAll =
+    isAdmin ||
+    Boolean(user?.permissions?.['admin.users.view']) ||
+    Boolean(user?.permissions?.['user.view.any']) ||
+    Boolean(user?.permissions?.['admin.access']) ||
+    Boolean(user?.permissions?.['admin.users']);
+  const canManageSelf =
+    Boolean(user?.permissions?.['user.view.self']) ||
+    Boolean(user?.permissions?.['user.update.self']) ||
+    Boolean(user?.permissions?.['user.update.profile']) ||
+    Boolean(user?.permissions?.['user.update.password']);
+
+  const isQueryEnabled = enabled !== undefined ? (enabled && (canViewAll || canManageSelf)) : (canViewAll || canManageSelf);
 
   return useQuery({
     queryKey: ['admin', 'users', show_disabled, show_deleted, show_permissions],
     enabled: isQueryEnabled,
     queryFn: async (): Promise<AdminUser[]> => {
+      // If user can only manage themselves, fetch their own profile directly
+      if (!canViewAll && canManageSelf) {
+        try {
+          const profile = await http.get<any>('/users/users_config/me');
+          if (profile && profile.id) {
+            return [{
+              id: profile.id,
+              email: profile.email || '',
+              name: profile.name || '',
+              role: profile.user_role || profile.role || 'user',
+              user_role: profile.user_role || profile.role || 'user',
+              disabled: Boolean(profile.disabled),
+              is_deleted: Boolean(profile.is_deleted),
+              permissions: profile.permissions || user?.permissions || {},
+              mfa_enabled: Boolean(profile.mfa_enabled),
+              mfa_method: profile.mfa_method,
+            }];
+          }
+        } catch (e) {
+          console.warn('Could not fetch self profile', e);
+        }
+      }
+
       // 1. Fetch full user config accounts from GET /users/users_config/users
       let usersList: any[] = [];
       try {
@@ -94,7 +129,19 @@ export const useAdminUsersQuery = (options: UserQueryOptions & { enabled?: boole
 export const useAllPermissionsQuery = (enabled?: boolean) => {
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
-  const isQueryEnabled = enabled !== undefined ? (enabled && isAdmin) : isAdmin;
+  const canViewAll =
+    isAdmin ||
+    Boolean(user?.permissions?.['admin.users.view']) ||
+    Boolean(user?.permissions?.['user.view.any']) ||
+    Boolean(user?.permissions?.['admin.access']) ||
+    Boolean(user?.permissions?.['admin.users']);
+  const canManageSelf =
+    Boolean(user?.permissions?.['user.view.self']) ||
+    Boolean(user?.permissions?.['user.update.self']) ||
+    Boolean(user?.permissions?.['user.update.profile']) ||
+    Boolean(user?.permissions?.['user.update.password']);
+
+  const isQueryEnabled = enabled !== undefined ? (enabled && (canViewAll || canManageSelf)) : (canViewAll || canManageSelf);
 
   return useQuery({
     queryKey: ['admin', 'all_permissions'],

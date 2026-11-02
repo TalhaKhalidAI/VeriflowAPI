@@ -91,6 +91,7 @@ export const AdminPage: React.FC = () => {
   const [editRole, setEditRole] = useState('user');
 
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [passwordOtp, setPasswordOtp] = useState('');
 
@@ -133,17 +134,24 @@ export const AdminPage: React.FC = () => {
     setEditDialogOpen(true);
   };
 
+  const isSelfAdmin = user?.role === 'admin' || (user as any)?.user_role === 'admin';
+
   const handleSaveEdit = async () => {
     if (!selectedUser) return;
+    const payload: any = { name: editName, email: editEmail };
+    if (isSelfAdmin) {
+      payload.role = editRole;
+    }
     await updateMutation.mutateAsync({
       userId: selectedUser.id,
-      payload: { name: editName, email: editEmail, role: editRole },
+      payload,
     });
     setEditDialogOpen(false);
   };
 
   const handleOpenPassword = (user: AdminUser) => {
     setSelectedUser(user);
+    setOldPassword('');
     setNewPassword('');
     setPasswordOtp('');
     setPasswordDialogOpen(true);
@@ -153,7 +161,11 @@ export const AdminPage: React.FC = () => {
     if (!selectedUser || !newPassword) return;
     await passwordMutation.mutateAsync({
       userId: selectedUser.id,
-      payload: { new_password: newPassword, otp: passwordOtp || undefined },
+      payload: {
+        new_password: newPassword,
+        old_password: oldPassword || undefined,
+        otp: passwordOtp || undefined,
+      },
     });
     setPasswordDialogOpen(false);
   };
@@ -319,67 +331,126 @@ export const AdminPage: React.FC = () => {
     return cols;
   }, [showPermissions]);
 
-  const renderUserActions = (u: AdminUser) => (
-    <Box sx={{ display: 'inline-flex', gap: 0.5, justifyContent: 'flex-end' }}>
-      <Tooltip title="Edit Profile">
-        <IconButton size="small" onClick={() => handleOpenEdit(u)} sx={{ color: '#94A3B8' }}>
-          <Edit fontSize="small" />
-        </IconButton>
-      </Tooltip>
-      <Tooltip title="Reset Password">
-        <IconButton size="small" onClick={() => handleOpenPassword(u)} sx={{ color: '#94A3B8' }}>
-          <Lock fontSize="small" />
-        </IconButton>
-      </Tooltip>
-      <Tooltip title="Issue Temp Token (2 min SLT)">
-        <IconButton size="small" onClick={() => handleOpenTempToken(u)} sx={{ color: '#F59E0B' }}>
-          <Clock fontSize="small" />
-        </IconButton>
-      </Tooltip>
-      {u.disabled ? (
-        <Tooltip title="Enable Account">
-          <IconButton
-            size="small"
-            onClick={() => enableMutation.mutate({ userId: u.id })}
-            sx={{ color: '#10B981' }}
-          >
-            <UserCheck fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      ) : (
-        <Tooltip title="Disable Account">
-          <IconButton
-            size="small"
-            onClick={() => disableMutation.mutate({ userId: u.id })}
-            sx={{ color: '#EF4444' }}
-          >
-            <UserX fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      )}
-      {u.is_deleted ? (
-        <Tooltip title="Restore Account">
-          <IconButton
-            size="small"
-            onClick={() => restoreMutation.mutate({ userId: u.id })}
-            sx={{ color: '#10B981' }}
-          >
-            <RotateCcw fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      ) : (
-        <Tooltip title="Delete Account">
-          <IconButton
-            size="small"
-            onClick={() => deleteMutation.mutate({ userId: u.id })}
-            sx={{ color: '#64748B', '&:hover': { color: '#EF4444' } }}
-          >
-            <Trash2 fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      )}
-    </Box>
-  );
+  const renderUserActions = (u: AdminUser) => {
+    const isTargetSelf = Number(user?.id) === Number(u.id);
+    const myPerms = user?.permissions || {};
+
+    const canEdit =
+      isSelfAdmin ||
+      Boolean(myPerms['admin.users.promote']) ||
+      Boolean(myPerms['admin.settings.update']) ||
+      (isTargetSelf && (Boolean(myPerms['user.update.self']) || Boolean(myPerms['user.update.profile']) || Boolean(myPerms['user.update.email'])));
+
+    const canChangePass =
+      isSelfAdmin ||
+      Boolean(myPerms['admin.anyuser.password.update']) ||
+      (isTargetSelf && Boolean(myPerms['user.update.password']));
+
+    const canIssueSLT =
+      isSelfAdmin ||
+      Boolean(myPerms['admin.users.promote']) ||
+      Boolean(myPerms['admin.users.restore']) ||
+      Boolean(myPerms['admin.users.disable']);
+
+    const canEnable =
+      isSelfAdmin ||
+      Boolean(myPerms['admin.user.enable']) ||
+      Boolean(myPerms['admin.users.promote']) ||
+      (isTargetSelf && Boolean(myPerms['user.self.enable']));
+
+    const canDisable =
+      isSelfAdmin ||
+      Boolean(myPerms['admin.users.disable']) ||
+      Boolean(myPerms['admin.users.promote']) ||
+      (isTargetSelf && Boolean(myPerms['user.disable.self']));
+
+    const canRestore =
+      isSelfAdmin ||
+      Boolean(myPerms['admin.users.restore']) ||
+      Boolean(myPerms['admin.users.promote']);
+
+    const canDelete =
+      isSelfAdmin ||
+      Boolean(myPerms['admin.users.delete']) ||
+      Boolean(myPerms['admin.users.promote']) ||
+      (isTargetSelf && Boolean(myPerms['user.delete.self']));
+
+    return (
+      <Box sx={{ display: 'inline-flex', gap: 0.5, justifyContent: 'flex-end' }}>
+        {canEdit && (
+          <Tooltip title="Edit Profile">
+            <IconButton size="small" onClick={() => handleOpenEdit(u)} sx={{ color: '#94A3B8', '&:hover': { color: '#38BDF8' } }}>
+              <Edit fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+        {canChangePass && (
+          <Tooltip title="Update Password">
+            <IconButton size="small" onClick={() => handleOpenPassword(u)} sx={{ color: '#94A3B8', '&:hover': { color: '#FACC15' } }}>
+              <Lock fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+        {canIssueSLT && (
+          <Tooltip title="Issue Temp Token (2 min SLT)">
+            <IconButton size="small" onClick={() => handleOpenTempToken(u)} sx={{ color: '#F59E0B' }}>
+              <Clock fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+        {u.disabled ? (
+          canEnable && (
+            <Tooltip title="Enable Account">
+              <IconButton
+                size="small"
+                onClick={() => enableMutation.mutate({ userId: u.id })}
+                sx={{ color: '#10B981' }}
+              >
+                <UserCheck fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )
+        ) : (
+          canDisable && (
+            <Tooltip title="Disable Account">
+              <IconButton
+                size="small"
+                onClick={() => disableMutation.mutate({ userId: u.id })}
+                sx={{ color: '#EF4444' }}
+              >
+                <UserX fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )
+        )}
+        {u.is_deleted ? (
+          canRestore && (
+            <Tooltip title="Restore Account">
+              <IconButton
+                size="small"
+                onClick={() => restoreMutation.mutate({ userId: u.id })}
+                sx={{ color: '#10B981' }}
+              >
+                <RotateCcw fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )
+        ) : (
+          canDelete && (
+            <Tooltip title="Delete Account">
+              <IconButton
+                size="small"
+                onClick={() => deleteMutation.mutate({ userId: u.id })}
+                sx={{ color: '#64748B', '&:hover': { color: '#EF4444' } }}
+              >
+                <Trash2 fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )
+        )}
+      </Box>
+    );
+  };
 
   return (
     <Box sx={{ p: 3, maxWidth: 1400, mx: 'auto' }}>
@@ -724,17 +795,19 @@ export const AdminPage: React.FC = () => {
             fullWidth
             size="small"
           />
-          <TextField
-            select
-            label="Role"
-            value={editRole}
-            onChange={(e) => setEditRole(e.target.value)}
-            fullWidth
-            size="small"
-          >
-            <MenuItem value="user">User (Standard)</MenuItem>
-            <MenuItem value="admin">Administrator</MenuItem>
-          </TextField>
+          {isSelfAdmin && (
+            <TextField
+              select
+              label="Role"
+              value={editRole}
+              onChange={(e) => setEditRole(e.target.value)}
+              fullWidth
+              size="small"
+            >
+              <MenuItem value="user">User (Standard)</MenuItem>
+              <MenuItem value="admin">Administrator</MenuItem>
+            </TextField>
+          )}
         </DialogContent>
         <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
           <Button onClick={() => setEditDialogOpen(false)} sx={{ color: '#94A3B8' }}>
@@ -755,6 +828,19 @@ export const AdminPage: React.FC = () => {
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ bgcolor: '#0B132B', pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {(user?.id === selectedUser?.id || !isSelfAdmin) && (
+            <TextField
+              label="Current Password"
+              type="password"
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+              fullWidth
+              size="small"
+              required
+              helperText="Required to verify identity before password update"
+              sx={{ mt: 1 }}
+            />
+          )}
           <TextField
             label="New Password"
             type="password"
@@ -763,6 +849,7 @@ export const AdminPage: React.FC = () => {
             fullWidth
             size="small"
             sx={{ mt: 1 }}
+            helperText="Minimum 8 characters with numbers & symbols"
           />
           {isMFAEnabled && (
             <Box sx={{ mt: 1 }}>
