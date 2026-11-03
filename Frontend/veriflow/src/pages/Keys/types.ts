@@ -58,10 +58,14 @@ export interface ExportPrivateKeyResponse {
   authorized_by?: number;
 }
 
+export type TokenDurationUnit = 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years';
+
 export interface IssueTokenPayload {
   target_user_id?: number | null;
   key_id?: string;
   expires_in_minutes?: number;
+  expires_in_value?: number;
+  expires_in_unit?: TokenDurationUnit;
   assigned_permissions?: string[];
   extra_claims?: Record<string, any>;
 }
@@ -89,7 +93,7 @@ export interface GenerateTagQRPayload {
   key_id?: string;
   payload: Record<string, any>;
   expires_in_value: number;
-  expires_in_unit: 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years';
+  expires_in_unit: TokenDurationUnit;
   box_size?: number;
   border?: number;
   format?: 'json' | 'png';

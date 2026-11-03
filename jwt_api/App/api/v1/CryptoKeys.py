@@ -410,6 +410,8 @@ async def issue_token(
             target_user_id=payload.target_user_id,
             key_id=payload.key_id,
             expires_in_minutes=payload.expires_in_minutes,
+            expires_in_value=payload.expires_in_value,
+            expires_in_unit=payload.expires_in_unit.value if payload.expires_in_unit else "minutes",
             assigned_permissions=payload.assigned_permissions,
             extra_claims=payload.extra_claims,
         )

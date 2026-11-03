@@ -153,12 +153,55 @@ class ShiftService(BaseService):
     # ================================================================
     # SHIFT LIFECYCLE: START SHIFT
     # ================================================================
+    @staticmethod
+    def _resolve_duration_seconds(
+        duration_hours: Optional[int] = 8,
+        duration_value: Optional[int] = None,
+        duration_unit: Optional[Any] = "hours",
+    ) -> int:
+        """Convert custom shift duration (value + unit or legacy duration_hours) into total seconds."""
+        raw_val = duration_value if duration_value is not None else (duration_hours if duration_hours is not None else 8)
+        try:
+            val = int(raw_val)
+        except (TypeError, ValueError):
+            raise ValidationError("Shift duration value must be a valid integer")
+
+        if val < 1:
+            raise ValidationError("Shift duration value must be at least 1")
+
+        unit_str = (
+            duration_unit.value
+            if hasattr(duration_unit, "value")
+            else str(duration_unit or "hours")
+        ).lower().strip()
+
+        if unit_str in ("sec", "secs", "second", "seconds", "s"):
+            return val
+        if unit_str in ("min", "mins", "minute", "minutes", "m"):
+            return val * 60
+        if unit_str in ("hr", "hrs", "hour", "hours", "h"):
+            return val * 3600
+        if unit_str in ("day", "days", "d"):
+            return val * 86400
+        if unit_str in ("week", "weeks", "w"):
+            return val * 7 * 86400
+        if unit_str in ("month", "months", "mo"):
+            return val * 30 * 86400
+        if unit_str in ("year", "years", "yr", "yrs", "y"):
+            return val * 365 * 86400
+
+        raise ValidationError(
+            f"Invalid duration unit '{duration_unit}'. Supported: seconds, minutes, hours, days, weeks, months, years"
+        )
+
     async def start_shift(
         self,
         current_user: Dict[str, Any],
         target_user_id: Optional[int] = None,
         key_id: Optional[str | uuid.UUID] = None,
-        duration_hours: int = 8,
+        duration_hours: Optional[int] = 8,
+        duration_value: Optional[int] = None,
+        duration_unit: Optional[Any] = "hours",
         device_id: Optional[str] = None,
         include_rules: bool = True,
     ) -> Dict[str, Any]:
@@ -203,11 +246,14 @@ class ShiftService(BaseService):
                 raise CryptoKeyNotFoundError("No active cryptographic key available to assign to this shift")
             assigned_key_id = crypto_key.id
 
-        if duration_hours < 1 or duration_hours > 24:
-            raise ValidationError("Shift duration must be between 1 and 24 hours")
+        exp_seconds = self._resolve_duration_seconds(
+            duration_hours=duration_hours,
+            duration_value=duration_value,
+            duration_unit=duration_unit,
+        )
 
         now = datetime.now(timezone.utc)
-        expires_at = now + timedelta(hours=duration_hours)
+        expires_at = now + timedelta(seconds=exp_seconds)
 
         # Fetch applicable inventory rules for this key
         applicable_rules = await self.rule_repo.get_applicable_rules(key_id=assigned_key_id)
@@ -223,15 +269,16 @@ class ShiftService(BaseService):
 
         # Atomic Redis lock to prevent race-condition double shift starts
         redis_shift_lock = f"shift:active:user:{assigned_user_id}"
+        redis_ttl = max(1, exp_seconds)
         c = await redis_client.ensure_connected()
-        acquired = await c.set(redis_shift_lock, "active", nx=True, ex=duration_hours * 3600)
+        acquired = await c.set(redis_shift_lock, "active", nx=True, ex=redis_ttl)
         if not acquired:
             # Verify against database: if DB has no active shift, the Redis lock was orphaned
             existing_active = await self.repo.get_active_shift_by_user(assigned_user_id)
             if existing_active:
                 raise ActiveShiftExistsError(f"User {assigned_user_id} already has an active shift")
             # Overwrite stale orphaned Redis lock
-            await c.set(redis_shift_lock, "active", ex=duration_hours * 3600)
+            await c.set(redis_shift_lock, "active", ex=redis_ttl)
 
         try:
             shift = await self.repo.create_shift(
@@ -262,6 +309,7 @@ class ShiftService(BaseService):
             "shift": self._to_dict(shift),
             "shift_token": shift_token,
             "expires_at": expires_at.isoformat(),
+            "expires_in_seconds": exp_seconds,
         }
 
     # ================================================================

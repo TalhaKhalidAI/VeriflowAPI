@@ -1,7 +1,19 @@
 # App/schemas/ShiftSchema.py
 
+from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
+
+
+class ShiftDurationUnit(str, Enum):
+    """Supported time units for custom shift & token duration."""
+    SECONDS = "seconds"
+    MINUTES = "minutes"
+    HOURS = "hours"
+    DAYS = "days"
+    WEEKS = "weeks"
+    MONTHS = "months"
+    YEARS = "years"
 
 
 class StartShiftRequest(BaseModel):
@@ -14,7 +26,20 @@ class StartShiftRequest(BaseModel):
         None, 
         description="Optional CryptoKey UUID to bind to this shift (Defaults automatically to the primary active key)"
     )
-    duration_hours: int = Field(8, ge=1, le=24, description="Shift duration in hours (1-24)")
+    duration_hours: Optional[int] = Field(
+        8,
+        ge=1,
+        description="Shift duration in hours (default 8; overridden if duration_value is provided)",
+    )
+    duration_value: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Custom duration numerical value (e.g. 30, 8, 7). Use with duration_unit.",
+    )
+    duration_unit: ShiftDurationUnit = Field(
+        ShiftDurationUnit.HOURS,
+        description="Unit for shift duration: seconds, minutes, hours, days, weeks, months, years",
+    )
     device_id: Optional[str] = Field(None, max_length=255, description="Physical scanner or handheld device serial/ID")
     include_rules: bool = Field(
         True,
@@ -50,6 +75,7 @@ class StartShiftResponse(BaseModel):
     shift: ShiftResponse
     shift_token: str
     expires_at: str
+    expires_in_seconds: Optional[int] = None
     qr_code_base64: Optional[str] = None
 
 

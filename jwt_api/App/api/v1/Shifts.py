@@ -140,6 +140,7 @@ async def get_shift_by_id(
         "Initiates a work shift and returns a scoped shift_token JWT for mobile scanner authorization. "
         "Normal workers can start shifts for THEMSELVES. "
         "Admins can specify target_user_id to start a shift on behalf of any worker. "
+        "Supports custom duration via duration_value and duration_unit (seconds, minutes, hours, days, weeks, months, years). "
         "Set qr_only=true to view the scannable QR code image directly."
     ),
 )
@@ -164,6 +165,8 @@ async def start_shift(
             target_user_id=payload.target_user_id,
             key_id=payload.key_id,
             duration_hours=payload.duration_hours,
+            duration_value=payload.duration_value,
+            duration_unit=payload.duration_unit,
             device_id=payload.device_id,
             include_rules=should_include_rules,
         )

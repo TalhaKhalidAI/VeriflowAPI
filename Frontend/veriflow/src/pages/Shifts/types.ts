@@ -20,10 +20,14 @@ export interface ShiftListResponse {
   total: number;
 }
 
+export type ShiftDurationUnit = 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years';
+
 export interface StartShiftPayload {
   target_user_id?: number | null;
   key_id?: string | null;
-  duration_hours: number;
+  duration_hours?: number;
+  duration_value?: number;
+  duration_unit?: ShiftDurationUnit;
   device_id?: string | null;
   include_rules?: boolean;
 }
@@ -32,6 +36,7 @@ export interface StartShiftResponse {
   shift?: ShiftRecord | null;
   shift_token?: string;
   expires_at?: string;
+  expires_in_seconds?: number;
   qr_code_base64?: string | null;
   qrBlobUrl?: string;
   isQrBlob?: boolean;

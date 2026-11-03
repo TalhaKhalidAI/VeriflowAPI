@@ -169,7 +169,8 @@ export function KeysPage() {
   const [issueForm, setIssueForm] = useState({
     key_id: '',
     target_user_id: '',
-    expires_in_minutes: 480,
+    expires_in_value: 8,
+    expires_in_unit: 'hours' as 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years',
     extra_claims: '{\n  "work_station": "BAY-4"\n}',
   });
 
@@ -180,7 +181,7 @@ export function KeysPage() {
     key_id: '',
     target_user_id: '',
     duration: 30,
-    unit: 'days' as 'days' | 'hours' | 'minutes' | 'weeks' | 'months' | 'years',
+    unit: 'days' as 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years',
     qr_only: false,
   });
   const [tagPayloadMode, setTagPayloadMode] = useState<'form' | 'json'>('form');
@@ -301,10 +302,13 @@ export function KeysPage() {
       return;
     }
 
+    const durationVal = Math.max(1, Number(issueForm.expires_in_value) || 1);
     const res = await issueTokenMutation.mutateAsync({
       key_id: issueForm.key_id || undefined,
       target_user_id: issueForm.target_user_id ? Number(issueForm.target_user_id) : undefined,
-      expires_in_minutes: Number(issueForm.expires_in_minutes),
+      expires_in_value: durationVal,
+      expires_in_unit: issueForm.expires_in_unit,
+      expires_in_minutes: issueForm.expires_in_unit === 'minutes' ? durationVal : undefined,
       extra_claims: claims,
     });
     setIssuedTokenResult(res.token);
@@ -477,8 +481,8 @@ export function KeysPage() {
       title: canDeleteAnyKey
         ? 'Permanently Delete Key (Admin)'
         : !canDeleteOwnKey
-        ? "Requires 'keys.delete' permission to delete keys"
-        : 'Permanently Delete Key (Only keys you created yourself; Admin-assigned keys are locked)',
+          ? "Requires 'keys.delete' permission to delete keys"
+          : 'Permanently Delete Key (Only keys you created yourself; Admin-assigned keys are locked)',
       variant: 'error' as const,
       disabled: (k: KeyRecord) => !canDeleteKeyRecord(k),
       onClick: (k: KeyRecord) => {
@@ -985,14 +989,35 @@ export function KeysPage() {
             ))}
           </TextField>
 
-          <TextField
-            label="Duration (Minutes)"
-            type="number"
-            value={issueForm.expires_in_minutes}
-            onChange={(e) => setIssueForm({ ...issueForm, expires_in_minutes: Number(e.target.value) })}
-            fullWidth
-            size="small"
-          />
+          <Stack direction="row" spacing={1.5}>
+            <TextField
+              label="Expiration Duration"
+              type="number"
+              value={issueForm.expires_in_value}
+              onChange={(e) =>
+                setIssueForm({ ...issueForm, expires_in_value: Math.max(1, Number(e.target.value) || 1) })
+              }
+              inputProps={{ min: 1 }}
+              sx={{ width: '50%' }}
+              size="small"
+            />
+            <FormControl sx={{ width: '50%' }} size="small">
+              <InputLabel>Duration Unit</InputLabel>
+              <Select
+                value={issueForm.expires_in_unit}
+                label="Duration Unit"
+                onChange={(e) => setIssueForm({ ...issueForm, expires_in_unit: e.target.value as any })}
+              >
+                <MenuItem value="seconds">Seconds</MenuItem>
+                <MenuItem value="minutes">Minutes</MenuItem>
+                <MenuItem value="hours">Hours</MenuItem>
+                <MenuItem value="days">Days</MenuItem>
+                <MenuItem value="weeks">Weeks</MenuItem>
+                <MenuItem value="months">Months</MenuItem>
+                <MenuItem value="years">Years</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
 
           <TextField
             label="Extra Custom Claims (JSON)"
@@ -1172,7 +1197,7 @@ export function KeysPage() {
                 <Typography variant="body2" sx={{ color: '#94A3B8' }}>
                   Signs arbitrary inventory attributes with RSA and dynamically generates a fitted QR code image.
                 </Typography>
-                
+
                 {/* Input Mode Selector: Form vs Raw JSON */}
                 <div className="join shrink-0">
                   <button
@@ -1191,22 +1216,20 @@ export function KeysPage() {
                       );
                       setTagPayloadMode('form');
                     }}
-                    className={`join-item btn btn-xs font-mono transition-all ${
-                      tagPayloadMode === 'form'
+                    className={`join-item btn btn-xs font-mono transition-all ${tagPayloadMode === 'form'
                         ? 'btn-warning font-bold text-slate-900 shadow-sm'
                         : 'btn-ghost text-slate-400'
-                    }`}
+                      }`}
                   >
                     Standard Form
                   </button>
                   <button
                     type="button"
                     onClick={() => setTagPayloadMode('json')}
-                    className={`join-item btn btn-xs font-mono transition-all ${
-                      tagPayloadMode === 'json'
+                    className={`join-item btn btn-xs font-mono transition-all ${tagPayloadMode === 'json'
                         ? 'btn-warning font-bold text-slate-900 shadow-sm'
                         : 'btn-ghost text-slate-400'
-                    }`}
+                      }`}
                   >
                     {'{ }'} Raw JSON Payload
                   </button>
@@ -1371,6 +1394,7 @@ export function KeysPage() {
                     label="Unit"
                     onChange={(e) => setTagForm({ ...tagForm, unit: e.target.value as any })}
                   >
+                    <MenuItem value="seconds">Seconds</MenuItem>
                     <MenuItem value="minutes">Minutes</MenuItem>
                     <MenuItem value="hours">Hours</MenuItem>
                     <MenuItem value="days">Days</MenuItem>

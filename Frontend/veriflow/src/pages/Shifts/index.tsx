@@ -44,7 +44,7 @@ import {
   useCheckoutShiftMutation,
   useDeleteShiftMutation,
 } from './query';
-import type { StartShiftResponse, ReissueShiftResponse, ShiftRecord } from './types';
+import type { StartShiftResponse, ReissueShiftResponse, ShiftRecord, ShiftDurationUnit } from './types';
 import { Table, type TableColumn, type TableAction } from '../../components/Table';
 import { useKeysQuery } from '../Keys/query';
 import { useAdminUsersQuery } from '../Admin/query';
@@ -136,7 +136,8 @@ export function ShiftsPage() {
   // Start Form (both include_rules and qr_only unchecked by default)
   const [startForm, setStartForm] = useState({
     key_id: '',
-    duration_hours: 8,
+    duration_value: 8,
+    duration_unit: 'hours' as ShiftDurationUnit,
     device_id: 'SCANNER-MOBILE-01',
     include_rules: false,
     qr_only: false,
@@ -175,6 +176,7 @@ export function ShiftsPage() {
   };
 
   const handleStartSubmit = async () => {
+    const durationVal = Math.max(1, Number(startForm.duration_value) || 1);
     const isQr = startForm.qr_only;
     const hasRules = startForm.include_rules;
     setResultMode({ qr_only: isQr, include_rules: hasRules });
@@ -182,7 +184,9 @@ export function ShiftsPage() {
     const res: any = await startShiftMutation.mutateAsync({
       payload: {
         key_id: startForm.key_id ? startForm.key_id : undefined,
-        duration_hours: startForm.duration_hours,
+        duration_value: durationVal,
+        duration_unit: startForm.duration_unit,
+        duration_hours: startForm.duration_unit === 'hours' ? durationVal : undefined,
         device_id: startForm.device_id,
         include_rules: hasRules,
         target_user_id: startForm.target_user_id ? Number(startForm.target_user_id) : undefined,
@@ -344,25 +348,25 @@ export function ShiftsPage() {
   const shiftActions: TableAction<ShiftRecord>[] = [
     ...(canCheckoutShift
       ? [
-          {
-            label: 'Checkout',
-            variant: 'error' as const,
-            disabled: (s: ShiftRecord) => s.status !== 'active',
-            onClick: (s: ShiftRecord) => handleCheckout(s.id),
-            render: (s: ShiftRecord) =>
-              s.status === 'active' ? (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="warning"
-                  onClick={() => handleCheckout(s.id)}
-                  sx={{ py: 0.25, px: 1, fontSize: 11 }}
-                >
-                  Checkout
-                </Button>
-              ) : null,
-          },
-        ]
+        {
+          label: 'Checkout',
+          variant: 'error' as const,
+          disabled: (s: ShiftRecord) => s.status !== 'active',
+          onClick: (s: ShiftRecord) => handleCheckout(s.id),
+          render: (s: ShiftRecord) =>
+            s.status === 'active' ? (
+              <Button
+                size="small"
+                variant="outlined"
+                color="warning"
+                onClick={() => handleCheckout(s.id)}
+                sx={{ py: 0.25, px: 1, fontSize: 11 }}
+              >
+                Checkout
+              </Button>
+            ) : null,
+        },
+      ]
       : []),
     {
       label: 'Delete',
@@ -496,8 +500,8 @@ export function ShiftsPage() {
               canDeleteAnyShift
                 ? 'Admin: Delete any shift by valid UUID'
                 : canDeleteOwnShift
-                ? 'Delete your own self-created shift'
-                : "Requires 'shifts.delete' permission"
+                  ? 'Delete your own self-created shift'
+                  : "Requires 'shifts.delete' permission"
             }
             sx={{ borderColor: 'rgba(239, 68, 68, 0.45)', color: '#F87171' }}
           >
@@ -666,19 +670,85 @@ export function ShiftsPage() {
             ))}
           </TextField>
 
-          <FormControl fullWidth size="small">
-            <InputLabel>Shift Duration</InputLabel>
-            <Select
-              value={startForm.duration_hours}
-              label="Shift Duration"
-              onChange={(e) => setStartForm({ ...startForm, duration_hours: Number(e.target.value) })}
-            >
-              <MenuItem value={4}>4 Hours</MenuItem>
-              <MenuItem value={8}>8 Hours (Standard)</MenuItem>
-              <MenuItem value={12}>12 Hours</MenuItem>
-              <MenuItem value={24}>24 Hours</MenuItem>
-            </Select>
-          </FormControl>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Stack direction="row" spacing={1.5}>
+              <TextField
+                type="number"
+                label="Custom Token / Shift Duration"
+                value={startForm.duration_value}
+                onChange={(e) =>
+                  setStartForm({
+                    ...startForm,
+                    duration_value: Math.max(1, Number(e.target.value) || 1),
+                  })
+                }
+                inputProps={{ min: 1 }}
+                sx={{ width: '50%' }}
+                size="small"
+                helperText="Enter any positive number"
+              />
+              <FormControl sx={{ width: '50%' }} size="small">
+                <InputLabel>Duration Unit</InputLabel>
+                <Select
+                  value={startForm.duration_unit}
+                  label="Duration Unit"
+                  onChange={(e) =>
+                    setStartForm({
+                      ...startForm,
+                      duration_unit: e.target.value as ShiftDurationUnit,
+                    })
+                  }
+                >
+                  <MenuItem value="seconds">Seconds</MenuItem>
+                  <MenuItem value="minutes">Minutes</MenuItem>
+                  <MenuItem value="hours">Hours</MenuItem>
+                  <MenuItem value="days">Days</MenuItem>
+                  <MenuItem value="weeks">Weeks</MenuItem>
+                  <MenuItem value="months">Months</MenuItem>
+                  <MenuItem value="years">Years</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+              {[
+                { label: '60 Sec', val: 60, unit: 'seconds' as ShiftDurationUnit },
+                { label: '30 Min', val: 30, unit: 'minutes' as ShiftDurationUnit },
+                { label: '4 Hrs', val: 4, unit: 'hours' as ShiftDurationUnit },
+                { label: '8 Hrs (Std)', val: 8, unit: 'hours' as ShiftDurationUnit },
+                { label: '12 Hrs', val: 12, unit: 'hours' as ShiftDurationUnit },
+                { label: '24 Hrs', val: 24, unit: 'hours' as ShiftDurationUnit },
+                { label: '7 Days', val: 7, unit: 'days' as ShiftDurationUnit },
+                { label: '1 Month', val: 1, unit: 'months' as ShiftDurationUnit },
+                { label: '1 Year', val: 1, unit: 'years' as ShiftDurationUnit },
+              ].map((preset) => {
+                const isSelected =
+                  Number(startForm.duration_value) === preset.val && startForm.duration_unit === preset.unit;
+                return (
+                  <Chip
+                    key={preset.label}
+                    label={preset.label}
+                    size="small"
+                    clickable
+                    onClick={() =>
+                      setStartForm({
+                        ...startForm,
+                        duration_value: preset.val,
+                        duration_unit: preset.unit,
+                      })
+                    }
+                    sx={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      bgcolor: isSelected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(30, 41, 59, 0.7)',
+                      color: isSelected ? '#10B981' : '#94A3B8',
+                      border: isSelected ? '1px solid #10B981' : '1px solid #334155',
+                    }}
+                  />
+                );
+              })}
+            </Stack>
+          </Box>
 
           <TextField
             label="Scanner Device ID"

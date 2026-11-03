@@ -83,6 +83,17 @@ class JWKSResponse(BaseModel):
     keys: List[JWKItem]
 
 
+class ExpirationUnit(str, Enum):
+    """Supported time units for flexible token & product tag expiration."""
+    SECONDS = "seconds"
+    MINUTES = "minutes"
+    HOURS = "hours"
+    DAYS = "days"
+    WEEKS = "weeks"
+    MONTHS = "months"
+    YEARS = "years"
+
+
 class IssueTokenRequest(BaseModel):
     """Payload to issue an RS256 token signed by an RSA key in the database."""
     target_user_id: Optional[int] = Field(
@@ -93,11 +104,19 @@ class IssueTokenRequest(BaseModel):
         None, 
         description="Optional CryptoKey UUID to sign with (Defaults automatically to the primary active key)"
     )
-    expires_in_minutes: int = Field(
+    expires_in_minutes: Optional[int] = Field(
         60, 
         ge=1, 
-        le=43200, 
-        description="Token expiration duration in minutes (1 min to 30 days)"
+        description="Token expiration duration in minutes (legacy fallback if expires_in_value is omitted)"
+    )
+    expires_in_value: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Custom numerical duration value before token expiration (takes precedence over expires_in_minutes when provided)"
+    )
+    expires_in_unit: ExpirationUnit = Field(
+        ExpirationUnit.MINUTES,
+        description="Unit for custom expiration duration: seconds, minutes, hours, days, weeks, months, years"
     )
     assigned_permissions: Optional[List[str]] = Field(
         None,
@@ -132,16 +151,6 @@ class VerifyTokenResponse(BaseModel):
     payload: Dict[str, Any]
 
 
-class ExpirationUnit(str, Enum):
-    """Supported time units for flexible product tag token expiration."""
-    MINUTES = "minutes"
-    HOURS = "hours"
-    DAYS = "days"
-    WEEKS = "weeks"
-    MONTHS = "months"
-    YEARS = "years"
-
-
 class GenerateProductTagQRRequest(BaseModel):
     """Request payload to generate a signed RS256 product tag QR code."""
     key_id: Optional[str] = Field(
@@ -159,7 +168,7 @@ class GenerateProductTagQRRequest(BaseModel):
     )
     expires_in_unit: ExpirationUnit = Field(
         ExpirationUnit.DAYS,
-        description="Unit for expiration duration: minutes, hours, days, weeks, months, years"
+        description="Unit for expiration duration: seconds, minutes, hours, days, weeks, months, years"
     )
     box_size: int = Field(
         10,

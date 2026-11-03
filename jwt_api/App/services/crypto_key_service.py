@@ -401,6 +401,30 @@ class CryptoKeyService(BaseService):
             **stats,
         }
 
+    @staticmethod
+    def _resolve_expiration_seconds(value: int, unit: str) -> int:
+        if value is None or int(value) < 1:
+            raise ValidationError("Expiration duration value must be at least 1")
+        val = int(value)
+        unit_clean = str(unit or "minutes").lower().strip()
+        if unit_clean in ("sec", "secs", "second", "seconds", "s"):
+            return val
+        if unit_clean in ("min", "mins", "minute", "minutes", "m"):
+            return val * 60
+        if unit_clean in ("hour", "hours", "hr", "hrs", "h"):
+            return val * 3600
+        if unit_clean in ("day", "days", "d"):
+            return val * 86400
+        if unit_clean in ("week", "weeks", "w"):
+            return val * 7 * 86400
+        if unit_clean in ("month", "months", "mo"):
+            return val * 30 * 86400
+        if unit_clean in ("year", "years", "yr", "yrs", "y"):
+            return val * 365 * 86400
+        raise ValidationError(
+            f"Invalid expiration unit '{unit}'. Supported: seconds, minutes, hours, days, weeks, months, years"
+        )
+
     # ================================================================
     # ASYMMETRIC (RS256) TOKEN ISSUANCE & VERIFICATION
     # ================================================================
@@ -409,7 +433,9 @@ class CryptoKeyService(BaseService):
         current_user: Dict[str, Any],
         target_user_id: Optional[int] = None,
         key_id: Optional[str | uuid.UUID] = None,
-        expires_in_minutes: int = 60,
+        expires_in_minutes: Optional[int] = 60,
+        expires_in_value: Optional[int] = None,
+        expires_in_unit: Optional[str] = "minutes",
         assigned_permissions: Optional[List[str]] = None,
         extra_claims: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -479,8 +505,12 @@ class CryptoKeyService(BaseService):
         rules_dict = {r.matching_claim_key: r.expected_value for r in applicable_rules}
 
         # 6. Construct Payload & Sign
+        if expires_in_value is not None:
+            exp_seconds = self._resolve_expiration_seconds(expires_in_value, expires_in_unit or "minutes")
+        else:
+            exp_seconds = self._resolve_expiration_seconds(expires_in_minutes or 60, "minutes")
         now = datetime.now(timezone.utc)
-        expires_at = now + timedelta(minutes=expires_in_minutes)
+        expires_at = now + timedelta(seconds=exp_seconds)
         user_perms = dict(user.permissions or {})
 
         payload = {
@@ -516,7 +546,7 @@ class CryptoKeyService(BaseService):
         return {
             "access_token": encoded_jwt,
             "token_type": "bearer",
-            "expires_in": expires_in_minutes * 60,
+            "expires_in": exp_seconds,
             "kid": key.kid,
             "key_id": str(key.id),
             "user_id": user.id,
@@ -674,23 +704,7 @@ class CryptoKeyService(BaseService):
         private_pem = decrypt_data(key.private_key_encrypted)
 
         # 5. Calculate Flexible Expiration
-        unit_clean = str(expires_in_unit).lower().strip()
-        if unit_clean in ("min", "minute", "minutes"):
-            exp_seconds = expires_in_value * 60
-        elif unit_clean in ("hour", "hours", "hr", "hrs"):
-            exp_seconds = expires_in_value * 3600
-        elif unit_clean in ("day", "days", "d"):
-            exp_seconds = expires_in_value * 86400
-        elif unit_clean in ("week", "weeks", "w"):
-            exp_seconds = expires_in_value * 7 * 86400
-        elif unit_clean in ("month", "months", "mo"):
-            exp_seconds = expires_in_value * 30 * 86400
-        elif unit_clean in ("year", "years", "yr", "yrs"):
-            exp_seconds = expires_in_value * 365 * 86400
-        else:
-            raise ValidationError(
-                f"Invalid expiration unit '{expires_in_unit}'. Supported: minutes, hours, days, weeks, months, years"
-            )
+        exp_seconds = self._resolve_expiration_seconds(expires_in_value, expires_in_unit)
 
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=exp_seconds)
