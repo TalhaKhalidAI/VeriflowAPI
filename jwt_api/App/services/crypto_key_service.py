@@ -65,6 +65,7 @@ class CryptoKeyService(BaseService):
             "public_key": key.public_key,
             "status": key.status,
             "created_by": key.created_by,
+            "issued_by": getattr(key, "issued_by", None),
             "created_at": key.created_at.isoformat() if key.created_at else None,
             "revoked_at": key.revoked_at.isoformat() if key.revoked_at else None,
             "revocation_reason": key.revocation_reason,
@@ -95,6 +96,7 @@ class CryptoKeyService(BaseService):
         created_by: Optional[int] = None,
         assigned_permissions: Optional[List[str]] = None,
         is_admin: bool = False,
+        issued_by: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Full lifecycle generation and storage of an RSA keypair:
@@ -143,6 +145,7 @@ class CryptoKeyService(BaseService):
             public_key=public_pem,
             private_key_encrypted=private_key_encrypted,
             created_by=created_by,
+            issued_by=issued_by,
             status="active",
         )
 
@@ -195,14 +198,21 @@ class CryptoKeyService(BaseService):
         """
         creator_filter = None
         if current_user and not self._is_admin(current_user):
-            if not self._has_permission(current_user, Permission.KEYS_VIEW):
+            if self._has_permission(current_user, Permission.KEYS_DELETE_ANY):
+                creator_filter = None
+            elif (
+                self._has_permission(current_user, Permission.KEYS_VIEW)
+                or self._has_permission(current_user, Permission.KEYS_DELETE)
+                or self._has_permission(current_user, Permission.KEYS_CREATE)
+            ):
+                creator_filter = self._get_user_id(current_user)
+            else:
                 return {
                     "items": [],
                     "limit": limit,
                     "offset": offset,
                     "total": 0,
                 }
-            creator_filter = self._get_user_id(current_user)
 
         keys = await self.repo.list_keys(
             status=status,
@@ -295,6 +305,7 @@ class CryptoKeyService(BaseService):
         name: str,
         key_size: int = 2048,
         created_by: Optional[int] = None,
+        issued_by: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Rotate cryptographic keys:
@@ -306,6 +317,7 @@ class CryptoKeyService(BaseService):
             name=name,
             key_size=key_size,
             created_by=created_by,
+            issued_by=issued_by if issued_by is not None else created_by,
         )
         logger.info(f"Key rotation completed. New primary signing key: kid={new_key['kid']}")
         return new_key
@@ -331,6 +343,63 @@ class CryptoKeyService(BaseService):
             f"Revoked CryptoKey {key.id} (kid={key.kid}) by user={revoked_by_user_id}. Reason: {reason}"
         )
         return self._to_public_dict(key)
+
+    # ================================================================
+    # PERMANENT DELETION (CRUD: DELETE)
+    # ================================================================
+    async def delete_key(
+        self,
+        key_id: str | uuid.UUID,
+        current_user: Dict[str, Any],
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Permanently delete a cryptographic key (and its key-scoped inventory rules).
+
+        Authorization:
+            - Admin role OR 'keys.delete.any': may delete ANY key. May pass force=True
+              to also remove shifts (and their scans) still bound to the key.
+            - 'keys.delete': may delete ONLY keys assigned to them that they generated
+              themselves (created_by == self AND issued_by == self). Keys an admin
+              generated on their behalf, and legacy keys with unknown issuer, are denied.
+              force=True is not allowed (shifts on the key may belong to other workers).
+        """
+        auth_user_id = self._get_user_id(current_user)
+        can_delete_any = self._is_admin(current_user) or self._has_permission(
+            current_user, Permission.KEYS_DELETE_ANY
+        )
+
+        if not can_delete_any and not self._has_permission(current_user, Permission.KEYS_DELETE):
+            raise PermissionDeniedError("Permission 'keys.delete' is required to delete cryptographic keys")
+
+        key = await self.repo.get_by_id(key_id)
+        if not key:
+            raise CryptoKeyNotFoundError(f"CryptoKey {key_id} not found")
+
+        if not can_delete_any:
+            if key.created_by != auth_user_id or getattr(key, "issued_by", None) != auth_user_id:
+                raise PermissionDeniedError(
+                    "You can only delete cryptographic keys you generated for yourself. "
+                    "Keys issued by an administrator require 'keys.delete.any'."
+                )
+            if force:
+                raise PermissionDeniedError(
+                    "force=true (cascade-deleting bound shifts) requires 'keys.delete.any'"
+                )
+
+        snapshot = self._to_public_dict(key)
+        stats = await self.repo.delete(key.id, cascade_shifts=bool(force and can_delete_any))
+
+        logger.warning(
+            f"SECURITY AUDIT: CryptoKey {snapshot['id']} (kid={snapshot['kid']}, owner={snapshot['created_by']}) "
+            f"deleted by user {auth_user_id} (force={force}); stats={stats}"
+        )
+        return {
+            "status": "success",
+            "message": f"Cryptographic key {snapshot['kid']} deleted",
+            "key": snapshot,
+            **stats,
+        }
 
     # ================================================================
     # ASYMMETRIC (RS256) TOKEN ISSUANCE & VERIFICATION

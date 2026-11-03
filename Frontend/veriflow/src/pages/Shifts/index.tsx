@@ -33,6 +33,7 @@ import {
   QrCode2Rounded as QrCodeIcon,
   AccessTimeFilledRounded as ShiftIcon,
   DownloadRounded as DownloadIcon,
+  DeleteRounded as DeleteIcon,
 } from '@mui/icons-material';
 import QRCode from 'qrcode';
 import {
@@ -41,6 +42,7 @@ import {
   useStartShiftMutation,
   useReissueActiveShiftMutation,
   useCheckoutShiftMutation,
+  useDeleteShiftMutation,
 } from './query';
 import type { StartShiftResponse, ReissueShiftResponse, ShiftRecord } from './types';
 import { Table, type TableColumn, type TableAction } from '../../components/Table';
@@ -50,11 +52,20 @@ import { useAuthStore } from '../../store/authStore';
 
 export function ShiftsPage() {
   const user = useAuthStore((state) => state.user);
+  const currentUserId = Number(user?.id);
   const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
-  const canViewAny = isAdmin || Boolean(user?.permissions?.['shifts.view.any']) || Boolean(user?.permissions?.['shifts.view.all']);
-  const canViewSelf = canViewAny || Boolean(user?.permissions?.['shifts.view']) || Boolean(user?.permissions?.['shifts.view.own']);
+  const canDeleteAnyShift = isAdmin || Boolean(user?.permissions?.['shifts.delete.any']);
+  const canDeleteOwnShift = canDeleteAnyShift || Boolean(user?.permissions?.['shifts.delete']);
+  const canViewAny = isAdmin || Boolean(user?.permissions?.['shifts.view.any']) || Boolean(user?.permissions?.['shifts.view.all']) || canDeleteAnyShift;
+  const canViewSelf = canViewAny || Boolean(user?.permissions?.['shifts.view']) || Boolean(user?.permissions?.['shifts.view.own']) || canDeleteOwnShift;
   const canCreateShift = isAdmin || Boolean(user?.permissions?.['shifts.create']);
   const canCheckoutShift = isAdmin || Boolean(user?.permissions?.['shifts.checkout']);
+
+  const isShiftSelfCreated = (s?: ShiftRecord | null) =>
+    Boolean(s && Number(s.user_id) === currentUserId && s.created_by != null && Number(s.created_by) === currentUserId);
+
+  const canDeleteShiftRecord = (s?: ShiftRecord | null) =>
+    Boolean(s && (canDeleteAnyShift || (canDeleteOwnShift && isShiftSelfCreated(s))));
 
   const { data: activeShift, isLoading: isLoadingActive } = useActiveShiftQuery();
   const { data: shiftsData, isLoading: isLoadingShifts } = useShiftsQuery();
@@ -64,11 +75,15 @@ export function ShiftsPage() {
   const startShiftMutation = useStartShiftMutation();
   const reissueMutation = useReissueActiveShiftMutation();
   const checkoutMutation = useCheckoutShiftMutation();
+  const deleteShiftMutation = useDeleteShiftMutation();
 
   // Modals state
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [reissueModalOpen, setReissueModalOpen] = useState(false);
   const [tokenModalOpen, setTokenModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [shiftIdToDelete, setShiftIdToDelete] = useState<string>('');
+  const [selectedShiftToDelete, setSelectedShiftToDelete] = useState<ShiftRecord | null>(null);
   const [tokenResult, setTokenResult] = useState<StartShiftResponse | ReissueShiftResponse | null>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [tokenModalTab, setTokenModalTab] = useState<number>(0);
@@ -173,6 +188,24 @@ export function ShiftsPage() {
     await checkoutMutation.mutateAsync(shiftId);
   };
 
+  const handleOpenDeleteShift = (shift?: ShiftRecord | null) => {
+    setSelectedShiftToDelete(shift || null);
+    setShiftIdToDelete(shift?.id || '');
+    setDeleteModalOpen(true);
+  };
+
+  const handleConfirmDeleteShift = async () => {
+    const targetId = (selectedShiftToDelete?.id || shiftIdToDelete || '').trim();
+    if (!targetId) {
+      ToastMsgs.error('Valid Shift ID is required to delete a shift');
+      return;
+    }
+    await deleteShiftMutation.mutateAsync(targetId);
+    setDeleteModalOpen(false);
+    setSelectedShiftToDelete(null);
+    setShiftIdToDelete('');
+  };
+
   const handleDownloadQR = () => {
     if (!qrCodeDataUrl) return;
     const a = document.createElement('a');
@@ -190,16 +223,32 @@ export function ShiftsPage() {
     {
       key: 'user_id',
       label: 'Shift / User',
-      render: (_, s) => (
-        <Box>
-          <Typography variant="body2" fontWeight={600} sx={{ color: '#F8FAFC' }}>
-            {s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`}
-          </Typography>
-          <Typography variant="caption" sx={{ color: '#64748B', fontFamily: 'monospace' }}>
-            {s?.id ? String(s.id).slice(0, 8) : "N/A"}...
-          </Typography>
-        </Box>
-      ),
+      render: (_, s) => {
+        const isAdminIssued = s.created_by == null || Number(s.created_by) !== Number(s.user_id);
+        return (
+          <Box>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="body2" fontWeight={600} sx={{ color: '#F8FAFC' }}>
+                {s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`}
+              </Typography>
+              <Chip
+                size="small"
+                label={isAdminIssued ? (s.created_by ? `Assigned by #${s.created_by}` : 'Admin-Assigned') : 'Self-Created'}
+                sx={{
+                  height: 18,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  bgcolor: isAdminIssued ? 'rgba(250, 204, 21, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                  color: isAdminIssued ? '#FACC15' : '#38BDF8',
+                }}
+              />
+            </Stack>
+            <Typography variant="caption" sx={{ color: '#64748B', fontFamily: 'monospace' }}>
+              ID: {s?.id || 'N/A'}
+            </Typography>
+          </Box>
+        );
+      },
     },
     {
       key: 'device_id',
@@ -260,7 +309,7 @@ export function ShiftsPage() {
                 <Button
                   size="small"
                   variant="outlined"
-                  color="error"
+                  color="warning"
                   onClick={() => handleCheckout(s.id)}
                   sx={{ py: 0.25, px: 1, fontSize: 11 }}
                 >
@@ -270,6 +319,32 @@ export function ShiftsPage() {
           },
         ]
       : []),
+    {
+      label: 'Delete',
+      variant: 'error' as const,
+      disabled: (s: ShiftRecord) => !canDeleteShiftRecord(s),
+      onClick: (s: ShiftRecord) => handleOpenDeleteShift(s),
+      render: (s: ShiftRecord) => {
+        const allowed = canDeleteShiftRecord(s);
+        const lockReason = !canDeleteOwnShift
+          ? "Requires 'shifts.delete' permission (Admin can grant this in Admin Console)"
+          : 'Cannot delete: normal users can only delete shifts they created themselves (not shifts created by Admin or another user)';
+        return (
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
+            disabled={!allowed || deleteShiftMutation.isPending}
+            onClick={() => handleOpenDeleteShift(s)}
+            title={allowed ? 'Permanently delete this shift and its scan logs' : lockReason}
+            sx={{ py: 0.25, px: 1, fontSize: 11 }}
+          >
+            {allowed ? 'Delete' : !canDeleteOwnShift ? 'Delete 🔒' : 'Admin-Created 🔒'}
+          </Button>
+        );
+      },
+    },
   ];
 
   return (
@@ -316,12 +391,23 @@ export function ShiftsPage() {
               {canCheckoutShift && (
                 <Button
                   variant="contained"
-                  color="error"
+                  color="warning"
                   startIcon={<StopIcon />}
                   onClick={() => handleCheckout(activeShift?.id)}
                   disabled={checkoutMutation.isPending}
                 >
                   Checkout & End Shift
+                </Button>
+              )}
+              {canDeleteShiftRecord(activeShift) && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => handleOpenDeleteShift(activeShift)}
+                  disabled={deleteShiftMutation.isPending}
+                >
+                  Delete Active Shift
                 </Button>
               )}
             </>
@@ -349,6 +435,29 @@ export function ShiftsPage() {
               )}
             </>
           )}
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={() => {
+              if (!canDeleteOwnShift) {
+                ToastMsgs.error("Requires 'shifts.delete' permission to delete shifts");
+                return;
+              }
+              handleOpenDeleteShift(null);
+            }}
+            disabled={!canDeleteOwnShift || deleteShiftMutation.isPending}
+            title={
+              canDeleteAnyShift
+                ? 'Admin: Delete any shift by valid UUID'
+                : canDeleteOwnShift
+                ? 'Delete your own self-created shift'
+                : "Requires 'shifts.delete' permission"
+            }
+            sx={{ borderColor: 'rgba(239, 68, 68, 0.45)', color: '#F87171' }}
+          >
+            {canDeleteAnyShift ? 'Delete Shift by ID' : canDeleteOwnShift ? 'Delete Own Shift' : 'Delete Shift 🔒'}
+          </Button>
         </Stack>
       </Box>
 
@@ -804,6 +913,80 @@ export function ShiftsPage() {
         <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
           <Button onClick={() => setTokenModalOpen(false)} sx={{ color: '#94A3B8' }}>
             Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Shift Modal */}
+      <Dialog open={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: '#0B132B', color: '#F87171', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <DeleteIcon />
+          {selectedShiftToDelete ? 'Confirm Shift Deletion' : 'Delete Shift by ID'}
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: '#0B132B', pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Alert severity="warning" sx={{ bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#FCA5A5', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+            {canDeleteAnyShift
+              ? 'Admin / Supervisor mode: You can permanently delete any shift by its valid UUID. Active shift tokens for that shift will be immediately invalidated in Redis.'
+              : 'Normal user mode (shifts.delete): You can only delete shifts that belong to you and that you personally started (shifts created for you by an Admin cannot be deleted).'}
+          </Alert>
+
+          {selectedShiftToDelete ? (
+            <Paper sx={{ p: 2, bgcolor: '#07111D', border: '1px solid #1E293B', borderRadius: 2 }}>
+              <Typography variant="body2" sx={{ color: '#F8FAFC', fontWeight: 700 }}>
+                Operator: {selectedShiftToDelete.user_name || selectedShiftToDelete.user_email || `User #${selectedShiftToDelete.user_id}`}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#38BDF8', fontFamily: 'monospace', display: 'block', mt: 0.5 }}>
+                Shift UUID: {selectedShiftToDelete.id}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#94A3B8', display: 'block', mt: 0.5 }}>
+                Status: {String(selectedShiftToDelete.status || '').toUpperCase()} | Device: {selectedShiftToDelete.device_id || 'DEFAULT'}
+              </Typography>
+            </Paper>
+          ) : (
+            <>
+              <FormControl fullWidth sx={{ mt: 1 }}>
+                <InputLabel>Select From Loaded Shifts (Optional)</InputLabel>
+                <Select
+                  value={shiftIdToDelete}
+                  label="Select From Loaded Shifts (Optional)"
+                  onChange={(e) => setShiftIdToDelete(String(e.target.value))}
+                >
+                  <MenuItem value="">
+                    <em>-- Paste UUID below or pick a shift --</em>
+                  </MenuItem>
+                  {shifts
+                    .filter((s) => canDeleteShiftRecord(s))
+                    .map((s) => (
+                      <MenuItem key={s.id} value={s.id}>
+                        {s.user_name || `User #${s.user_id}`} — {s.id.slice(0, 8)}... ({s.status.toUpperCase()})
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                label="Shift UUID to Delete"
+                value={shiftIdToDelete}
+                onChange={(e) => setShiftIdToDelete(e.target.value)}
+                placeholder="e.g. 50678322-ef9f-4512-9c1c-4d657da52d85"
+                fullWidth
+                inputProps={{ style: { fontFamily: 'monospace' } }}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
+          <Button onClick={() => setDeleteModalOpen(false)} sx={{ color: '#94A3B8' }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleConfirmDeleteShift}
+            disabled={deleteShiftMutation.isPending || !(selectedShiftToDelete?.id || shiftIdToDelete.trim())}
+          >
+            {deleteShiftMutation.isPending ? <CircularProgress size={20} /> : 'Permanently Delete Shift'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -48,6 +48,8 @@ class Permission(str, Enum):
     KEYS_CREATE = "keys.create"
     KEYS_UPDATE = "keys.update"
     KEYS_REVOKE = "keys.revoke"
+    KEYS_DELETE = "keys.delete"            # delete keys the user personally generated
+    KEYS_DELETE_ANY = "keys.delete.any"    # delete ANY key (admin-grade)
 
     # ===== VERIFLOW: SHIFT MANAGEMENT =====
     SHIFTS_VIEW = "shifts.view"
@@ -57,6 +59,8 @@ class Permission(str, Enum):
     SHIFTS_CREATE = "shifts.create"
     SHIFTS_REVOKE = "shifts.revoke"
     SHIFTS_CHECKOUT = "shifts.checkout"
+    SHIFTS_DELETE = "shifts.delete"            # delete own shifts the user started themselves
+    SHIFTS_DELETE_ANY = "shifts.delete.any"    # delete ANY shift by id (admin-grade)
 
     # ===== VERIFLOW: INVENTORY RULES =====
     INVENTORY_RULES_VIEW = "inventory_rules.view"

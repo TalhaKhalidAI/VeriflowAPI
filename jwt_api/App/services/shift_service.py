@@ -81,6 +81,7 @@ class ShiftService(BaseService):
         return (
             cls._has_permission(current_user, Permission.SHIFTS_VIEW_ANY)
             or cls._has_permission(current_user, Permission.SHIFTS_VIEW_ALL)
+            or cls._has_permission(current_user, Permission.SHIFTS_DELETE_ANY)
         )
 
     @classmethod
@@ -104,6 +105,7 @@ class ShiftService(BaseService):
             "expires_at": shift.expires_at.isoformat() if shift.expires_at else None,
             "ended_at": shift.ended_at.isoformat() if shift.ended_at else None,
             "revoked_reason": shift.revoked_reason,
+            "created_by": getattr(shift, "created_by", None),
         }
 
     def _generate_shift_token(
@@ -237,6 +239,7 @@ class ShiftService(BaseService):
                 key_id=assigned_key_id,
                 expires_at=expires_at,
                 device_id=device_id,
+                created_by=auth_user_id,
             )
         except Exception:
             await c.delete(redis_shift_lock)
@@ -440,6 +443,77 @@ class ShiftService(BaseService):
         return self._to_dict(revoked_shift)
 
     # ================================================================
+    # SHIFT LIFECYCLE: DELETE (PERMANENT)
+    # ================================================================
+    @classmethod
+    def _can_delete_any_shift(cls, current_user: Dict[str, Any]) -> bool:
+        return cls._is_admin(current_user) or cls._has_permission(
+            current_user, Permission.SHIFTS_DELETE_ANY
+        )
+
+    async def delete_shift(
+        self,
+        shift_id: str | uuid.UUID,
+        current_user: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Permanently delete a shift (and its scan history).
+
+        Authorization:
+            - Admin role OR 'shifts.delete.any': may delete ANY shift by valid id.
+            - 'shifts.delete': may delete ONLY shifts that are their own AND that
+              they started themselves. Shifts an admin/supervisor started on their
+              behalf (created_by != self) or legacy shifts (created_by NULL) are denied.
+        If the shift is still active, its Redis lock is released and the shift_id is
+        blacklisted so any outstanding shift_token is rejected immediately.
+        """
+        auth_user_id = self._get_user_id(current_user)
+        can_delete_any = self._can_delete_any_shift(current_user)
+
+        if not can_delete_any and not self._has_permission(current_user, Permission.SHIFTS_DELETE):
+            raise PermissionDeniedError("Permission 'shifts.delete' is required to delete shifts")
+
+        shift = await self.repo.get_by_id(shift_id)
+        if not shift:
+            raise ShiftNotFoundError(f"Shift {shift_id} not found")
+
+        if not can_delete_any:
+            created_by = getattr(shift, "created_by", None)
+            if shift.user_id != auth_user_id or created_by != auth_user_id:
+                raise PermissionDeniedError(
+                    "You can only delete shifts that you started for yourself. "
+                    "Shifts created by an administrator or another user require 'shifts.delete.any'."
+                )
+
+        snapshot = self._to_dict(shift)
+        was_active = shift.status == "active"
+        expires_at = shift.expires_at
+        owner_id = shift.user_id
+
+        removed_scans = await self.repo.delete_shift(shift_id)
+
+        if was_active:
+            try:
+                c = await redis_client.ensure_connected()
+                await c.delete(f"shift:active:user:{owner_id}")
+                ttl = int((expires_at - datetime.now(timezone.utc)).total_seconds()) if expires_at else 0
+                if ttl > 0:
+                    await c.set(revoked_shift_key(snapshot["id"]), "deleted", ex=ttl)
+            except Exception as e:
+                logger.warning(f"Could not invalidate deleted active shift {shift_id} in Redis: {e}")
+
+        logger.warning(
+            f"SECURITY AUDIT: Shift {shift_id} (owner={owner_id}, status={snapshot['status']}) "
+            f"deleted by user {auth_user_id}; {removed_scans} scans removed"
+        )
+        return {
+            "status": "success",
+            "message": f"Shift {snapshot['id']} deleted",
+            "shift": snapshot,
+            "removed_scans": removed_scans,
+        }
+
+    # ================================================================
     # READ OPERATIONS
     # ================================================================
     async def get_shift_by_id(
@@ -493,6 +567,7 @@ class ShiftService(BaseService):
             or self._can_view_any_shifts(current_user)
             or self._has_permission(current_user, Permission.SHIFTS_VIEW)
             or self._has_permission(current_user, Permission.SHIFTS_VIEW_OWN)
+            or self._has_permission(current_user, Permission.SHIFTS_DELETE)
         )
         if not can_view_self:
             return None
@@ -523,6 +598,7 @@ class ShiftService(BaseService):
             is_privileged
             or self._has_permission(current_user, Permission.SHIFTS_VIEW)
             or self._has_permission(current_user, Permission.SHIFTS_VIEW_OWN)
+            or self._has_permission(current_user, Permission.SHIFTS_DELETE)
             or self._has_permission(current_user, Permission.USER_HISTORY_VIEW)
         )
         auth_user_id = self._get_user_id(current_user)

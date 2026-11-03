@@ -40,6 +40,7 @@ class ShiftResponse(BaseModel):
     expires_at: Optional[str] = None
     ended_at: Optional[str] = None
     revoked_reason: Optional[str] = None
+    created_by: Optional[int] = None
     user_name: Optional[str] = None
     user_email: Optional[str] = None
 
@@ -63,3 +64,11 @@ class ShiftListResponse(BaseModel):
 class ExpireShiftsResponse(BaseModel):
     """Response returned by shift maintenance job."""
     expired_shifts_count: int
+
+
+class DeleteShiftResponse(BaseModel):
+    """Response returned after permanently deleting a shift."""
+    status: str
+    message: str
+    shift: ShiftResponse
+    removed_scans: int = 0

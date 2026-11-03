@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactECharts from 'echarts-for-react';
 import type { ShiftRecord } from '../../Shifts/types';
+import { useDeleteShiftMutation } from '../../Shifts/query';
 import type { AdminUser } from '../../Admin/types';
 import { useAuthStore } from '../../../store/authStore';
 
@@ -18,7 +19,17 @@ type StatusFilter = 'all' | 'active' | 'ended' | 'expired';
 export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
   const navigate = useNavigate();
   const currentUser = useAuthStore((state) => state.user);
+  const currentUserId = Number(currentUser?.id);
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin' || currentUser?.user_role?.toLowerCase() === 'admin';
+  const canDeleteAnyShift = isAdmin || Boolean(currentUser?.permissions?.['shifts.delete.any']);
+  const canDeleteOwnShift = canDeleteAnyShift || Boolean(currentUser?.permissions?.['shifts.delete']);
+  const deleteShiftMutation = useDeleteShiftMutation();
+  const canDeleteShiftRecord = (s: ShiftRecord) =>
+    canDeleteAnyShift ||
+    (canDeleteOwnShift &&
+      Number(s.user_id) === currentUserId &&
+      s.created_by != null &&
+      Number(s.created_by) === currentUserId);
   const canViewOthers =
     isAdmin ||
     Boolean(currentUser?.permissions?.['shifts.view.any']) ||
@@ -638,12 +649,35 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
                         )}
                       </td>
                       <td className="text-right">
-                        <button
-                          onClick={() => navigate('/shifts')}
-                          className="btn btn-ghost btn-xs text-yellow-400 hover:bg-yellow-400/10 font-mono h-6 min-h-0 text-[10px] px-2"
-                        >
-                          Inspect →
-                        </button>
+                        <div className="inline-flex items-center gap-1 justify-end">
+                          <button
+                            onClick={() => {
+                              if (!canDeleteShiftRecord(shift)) return;
+                              deleteShiftMutation.mutate(shift.id);
+                            }}
+                            disabled={!canDeleteShiftRecord(shift) || deleteShiftMutation.isPending}
+                            title={
+                              canDeleteShiftRecord(shift)
+                                ? 'Permanently delete this shift'
+                                : !canDeleteOwnShift
+                                ? "Requires 'shifts.delete' permission"
+                                : 'Cannot delete: only shifts you created yourself can be deleted'
+                            }
+                            className={`btn btn-xs font-mono h-6 min-h-0 text-[10px] px-2 ${
+                              canDeleteShiftRecord(shift)
+                                ? 'btn-outline btn-error text-red-400 hover:bg-red-500/20'
+                                : 'btn-disabled opacity-40'
+                            }`}
+                          >
+                            {canDeleteShiftRecord(shift) ? '🗑 Delete' : '🔒 Delete'}
+                          </button>
+                          <button
+                            onClick={() => navigate('/shifts')}
+                            className="btn btn-ghost btn-xs text-yellow-400 hover:bg-yellow-400/10 font-mono h-6 min-h-0 text-[10px] px-2"
+                          >
+                            Inspect →
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

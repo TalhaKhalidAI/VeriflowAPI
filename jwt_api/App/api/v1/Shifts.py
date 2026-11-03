@@ -46,6 +46,7 @@ from App.schemas.ShiftSchema import (
     StartShiftResponse,
     ShiftListResponse,
     ExpireShiftsResponse,
+    DeleteShiftResponse,
 )
 
 logger = get_core_logger(__name__)
@@ -410,6 +411,36 @@ async def revoke_shift(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@shifts_router.delete(
+    "/{shift_id}",
+    response_model=DeleteShiftResponse,
+    summary="Permanently delete a shift",
+    description=(
+        "Deletes a shift and its scan history. "
+        "Admin / 'shifts.delete.any': any shift by valid id. "
+        "'shifts.delete': only shifts that are your own AND that you started yourself "
+        "(not shifts an admin or supervisor started for you). "
+        "Active shifts are invalidated in Redis so their shift_token stops working immediately."
+    ),
+)
+async def delete_shift(
+    shift_id: str,
+    current_user: Dict[str, Any] = Depends(
+        require_permission(
+            [Permission.SHIFTS_DELETE, Permission.SHIFTS_DELETE_ANY], mode="any", bypass_admin=True
+        )
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    try:
+        return await service.delete_shift(shift_id=shift_id, current_user=current_user)
+    except ShiftNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
 @shifts_router.post(

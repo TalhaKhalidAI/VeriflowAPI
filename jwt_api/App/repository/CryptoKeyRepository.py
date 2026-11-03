@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 import logging
-from typing import Optional, List
+from typing import Optional, List, Tuple, Dict
 import uuid
 
 from sqlalchemy import select, desc
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from App.api.databases.MigrateTable import CryptoKey as CryptoKeyModel
 from App.core.exceptions import (
     CryptoKeyNotFoundError,
+    CryptoKeyInUseError,
     DuplicateKeyIdError,
     InvalidCryptoKeyStateError,
     InfrastructureError,
@@ -139,6 +140,7 @@ class CryptoKeyRepository:
         private_key_encrypted: str,
         created_by: Optional[int] = None,
         status: str = "active",
+        issued_by: Optional[int] = None,
     ) -> CryptoKeyModel:
         """
         Register a new cryptographic key pair. Does NOT commit.
@@ -153,6 +155,7 @@ class CryptoKeyRepository:
             public_key=public_key,
             private_key_encrypted=private_key_encrypted,
             created_by=created_by,
+            issued_by=issued_by,
             status=status,
         )
         self.session.add(key)
@@ -203,3 +206,90 @@ class CryptoKeyRepository:
         await self._safe_flush()
         logger.warning(f"Revoked CryptoKey: {key.id} (kid={key.kid}) - Reason: {reason}")
         return key
+
+    async def count_referencing_shifts(self, key_id: str | uuid.UUID) -> Tuple[int, int]:
+        """Return (total_shifts, active_shifts) that reference this key."""
+        from sqlalchemy import func, case
+        from App.api.databases.MigrateTable import Shift as ShiftModel
+
+        parsed_id = self._parse_uuid(key_id)
+        if not parsed_id:
+            return 0, 0
+        result = await self.session.execute(
+            select(
+                func.count(ShiftModel.id),
+                func.coalesce(func.sum(case((ShiftModel.status == "active", 1), else_=0)), 0),
+            ).where(ShiftModel.key_id == parsed_id)
+        )
+        total, active = result.one()
+        return int(total or 0), int(active or 0)
+
+    async def delete(self, key_id: str | uuid.UUID, cascade_shifts: bool = False) -> Dict[str, int]:
+        """
+        Permanently delete a cryptographic key. Does NOT commit.
+
+        - Inventory rules scoped to this key are always removed.
+        - Shifts referencing the key block deletion unless cascade_shifts=True,
+          in which case those shifts AND their scan history are removed too.
+
+        Raises:
+            CryptoKeyNotFoundError: If the key does not exist.
+            CryptoKeyInUseError: If shifts reference the key and cascade_shifts is False.
+        """
+        from sqlalchemy import delete as sa_delete, func
+        from App.api.databases.MigrateTable import (
+            Shift as ShiftModel,
+            ScanHistory as ScanHistoryModel,
+            InventoryRule as InventoryRuleModel,
+        )
+
+        key = await self.get_by_id(key_id, for_update=True)
+        if not key:
+            raise CryptoKeyNotFoundError(f"CryptoKey {key_id} not found")
+
+        total_shifts, active_shifts = await self.count_referencing_shifts(key.id)
+        removed_scans = 0
+        if total_shifts:
+            if not cascade_shifts:
+                # Allow deleting if all referencing shifts belong to the key owner themselves
+                other_shifts_res = await self.session.execute(
+                    select(func.count(ShiftModel.id)).where(
+                        ShiftModel.key_id == key.id,
+                        (ShiftModel.user_id != key.created_by)
+                        | (
+                            ShiftModel.created_by.is_not(None)
+                            & (ShiftModel.created_by != key.created_by)
+                        ),
+                    )
+                )
+                other_shifts_count = int(other_shifts_res.scalar() or 0)
+                if other_shifts_count > 0 or key.created_by is None:
+                    raise CryptoKeyInUseError(
+                        f"CryptoKey {key_id} is referenced by {total_shifts} shift(s) "
+                        f"({active_shifts} active). Revoke the key instead, or delete with force=true "
+                        f"(requires keys.delete.any) to also remove those shifts and their scan history."
+                    )
+            shift_ids = select(ShiftModel.id).where(ShiftModel.key_id == key.id).scalar_subquery()
+            scan_res = await self.session.execute(
+                sa_delete(ScanHistoryModel).where(ScanHistoryModel.shift_id.in_(shift_ids))
+            )
+            removed_scans = scan_res.rowcount or 0
+            await self.session.execute(sa_delete(ShiftModel).where(ShiftModel.key_id == key.id))
+
+        rule_res = await self.session.execute(
+            sa_delete(InventoryRuleModel).where(InventoryRuleModel.key_id == key.id)
+        )
+        removed_rules = rule_res.rowcount or 0
+
+        await self.session.delete(key)
+        await self._safe_flush()
+        logger.warning(
+            f"Deleted CryptoKey {key.id} (kid={key.kid}); removed {removed_rules} rules, "
+            f"{total_shifts if cascade_shifts else 0} shifts, {removed_scans} scans"
+        )
+        return {
+            "removed_rules": removed_rules,
+            "removed_shifts": total_shifts if cascade_shifts else 0,
+            "removed_active_shifts": active_shifts if cascade_shifts else 0,
+            "removed_scans": removed_scans,
+        }

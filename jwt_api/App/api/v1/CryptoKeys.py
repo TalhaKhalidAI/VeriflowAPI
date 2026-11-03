@@ -20,6 +20,7 @@ from App.core.Connector import get_db
 from App.core.LoggingInit import get_core_logger
 from App.core.exceptions import (
     CryptoKeyNotFoundError,
+    CryptoKeyInUseError,
     DuplicateKeyIdError,
     InvalidCryptoKeyStateError,
     ValidationError,
@@ -47,6 +48,7 @@ from App.schemas.CryptoKeySchema import (
     GenerateProductTagQRRequest,
     ProductTagQRResponse,
     ExportPrivateKeyRequest,
+    DeleteKeyResponse,
 )
 
 
@@ -181,6 +183,7 @@ async def create_key(
             created_by=assigned_creator,
             assigned_permissions=payload.assigned_permissions,
             is_admin=is_admin,
+            issued_by=authenticated_user_id,
         )
     except PermissionDeniedError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -208,8 +211,8 @@ async def rotate_key(
     is_admin = current_user.get("role") == "admin"
     authenticated_user_id = current_user.get("user_id") or current_user.get("id")
 
-    if payload.target_user_id is not None and not is_admin:
-        if payload.target_user_id != authenticated_user_id:
+    if payload.target_user_id is not None:
+        if not is_admin and payload.target_user_id != authenticated_user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only administrators are permitted to rotate keys for other users",
@@ -224,9 +227,50 @@ async def rotate_key(
             name=payload.name,
             key_size=payload.key_size,
             created_by=creator,
+            issued_by=authenticated_user_id,
         )
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@crypto_keys_router.delete(
+    "/{key_id}",
+    response_model=DeleteKeyResponse,
+    summary="Permanently delete a cryptographic key",
+    description=(
+        "Deletes a key and its key-scoped inventory rules. "
+        "Admin / 'keys.delete.any': any key; pass force=true to also delete shifts (and scans) bound to it. "
+        "'keys.delete': only keys assigned to you that you generated yourself (not admin-issued keys). "
+        "Returns 409 if shifts still reference the key and force is not set."
+    ),
+)
+async def delete_key(
+    key_id: str,
+    force: bool = Query(False, description="Cascade-delete shifts/scans bound to this key (keys.delete.any only)"),
+    current_user: Dict[str, Any] = Depends(
+        require_permission(
+            [Permission.KEYS_DELETE, Permission.KEYS_DELETE_ANY], mode="any", bypass_admin=True
+        )
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    service = CryptoKeyService(db)
+    is_admin_or_any = (
+        str(current_user.get("role") or current_user.get("user_role") or "").lower() == "admin"
+        or bool((current_user.get("permissions") or {}).get(Permission.KEYS_DELETE_ANY.value))
+    )
+    try:
+        return await service.delete_key(
+            key_id=key_id,
+            current_user=current_user,
+            force=True if is_admin_or_any else force,
+        )
+    except CryptoKeyNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except CryptoKeyInUseError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
 @crypto_keys_router.post(

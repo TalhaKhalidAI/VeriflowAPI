@@ -8,6 +8,7 @@ export interface ShiftRecord {
   expires_at?: string | null;
   ended_at?: string | null;
   revoked_reason?: string | null;
+  created_by?: number | null;
   user_name?: string | null;
   user_email?: string | null;
 }
@@ -43,4 +44,11 @@ export interface ReissueShiftResponse {
   qr_code_base64?: string | null;
   qrBlobUrl?: string;
   isQrBlob?: boolean;
+}
+
+export interface DeleteShiftResponse {
+  status: string;
+  message: string;
+  shift: ShiftRecord;
+  removed_scans: number;
 }

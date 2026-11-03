@@ -204,6 +204,9 @@ class DuplicateKeyIdError(DomainError):
 class InvalidCryptoKeyStateError(DomainError):
     default_message = "Cryptographic key is not in a valid state for this operation"
 
+class CryptoKeyInUseError(DomainError):
+    default_message = "Cryptographic key is still referenced by shifts and cannot be deleted"
+
 class ScanNotFoundError(DomainError):
     default_message = "Scan record not found"
 

@@ -195,7 +195,14 @@ class InventoryRuleService(BaseService):
         - Admin: Returns all rules matching query filters (global + all keys).
         - Normal User: Returns only rules attached to keys owned by this user.
         """
-        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.INVENTORY_RULES_VIEW):
+        can_access_rules = (
+            self._is_admin(current_user)
+            or self._has_permission(current_user, Permission.INVENTORY_RULES_VIEW)
+            or self._has_permission(current_user, Permission.INVENTORY_RULES_CREATE)
+            or self._has_permission(current_user, Permission.INVENTORY_RULES_UPDATE)
+            or self._has_permission(current_user, Permission.INVENTORY_RULES_DELETE)
+        )
+        if not can_access_rules:
             return {
                 "items": [],
                 "limit": limit,

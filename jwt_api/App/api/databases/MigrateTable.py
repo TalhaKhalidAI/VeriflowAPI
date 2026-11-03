@@ -44,6 +44,9 @@ class CryptoKey(Base):
     revocation_reason = Column(String(255), nullable=True)
     
     created_by = Column(ForeignKey("users.id"), nullable=True)
+    # Actor who actually generated the key (differs from created_by when an
+    # admin generates a key on behalf of another user). NULL = legacy/unknown.
+    issued_by = Column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -68,8 +71,11 @@ class Shift(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     ended_at = Column(DateTime(timezone=True), nullable=True)
     revoked_reason = Column(String(255), nullable=True)
+    # Actor who started the shift (differs from user_id when an admin/supervisor
+    # starts a shift on behalf of a worker). NULL = legacy/unknown.
+    created_by = Column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
-    user = relationship("User")
+    user = relationship("User", foreign_keys=[user_id])
     crypto_key = relationship("CryptoKey")
 
 

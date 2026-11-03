@@ -7,6 +7,7 @@ import type {
   StartShiftPayload,
   StartShiftResponse,
   ReissueShiftResponse,
+  DeleteShiftResponse,
 } from './types';
 
 export const useActiveShiftQuery = () => {
@@ -123,6 +124,23 @@ export const useCheckoutShiftMutation = () => {
     },
     onError: (err: any) => {
       ToastMsgs.error(err?.message || 'Failed to checkout shift');
+    },
+  });
+};
+
+export const useDeleteShiftMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (shiftId: string) => {
+      return await http.delete<DeleteShiftResponse>(`/shifts/${shiftId}`);
+    },
+    onSuccess: (res) => {
+      ToastMsgs.warning(`Shift ${res.shift.id.slice(0, 8)} permanently deleted (${res.removed_scans} scans removed)`);
+      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      queryClient.invalidateQueries({ queryKey: ['scans'] });
+    },
+    onError: (err: any) => {
+      ToastMsgs.error(err?.response?.data?.detail || err?.message || 'Failed to delete shift');
     },
   });
 };

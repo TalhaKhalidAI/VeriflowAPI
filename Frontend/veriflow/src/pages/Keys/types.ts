@@ -7,6 +7,7 @@ export interface KeyRecord {
   public_key: string;
   status: 'active' | 'revoked' | 'expired' | string;
   created_by?: number | null;
+  issued_by?: number | null;
   created_at?: string | null;
   revoked_at?: string | null;
   revocation_reason?: string | null;
@@ -112,4 +113,14 @@ export interface ExportPrivateKeyPayload {
   keyId: string;
   password: string;
   otp?: string;
+}
+
+export interface DeleteKeyResponse {
+  status: string;
+  message: string;
+  key: KeyRecord;
+  removed_rules: number;
+  removed_shifts: number;
+  removed_active_shifts: number;
+  removed_scans: number;
 }

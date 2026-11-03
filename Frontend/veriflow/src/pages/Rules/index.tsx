@@ -42,10 +42,10 @@ import { useAuthStore } from '../../store/authStore';
 export function RulesPage() {
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
-  const canViewRule = isAdmin || Boolean(user?.permissions?.['inventory_rules.view']);
   const canCreateRule = isAdmin || Boolean(user?.permissions?.['inventory_rules.create']);
   const canUpdateRule = isAdmin || Boolean(user?.permissions?.['inventory_rules.update']);
   const canDeleteRule = isAdmin || Boolean(user?.permissions?.['inventory_rules.delete']);
+  const canViewRule = isAdmin || Boolean(user?.permissions?.['inventory_rules.view']) || canCreateRule || canUpdateRule || canDeleteRule;
 
   const { data: keysData } = useKeysQuery();
   const keys = keysData?.items || [];

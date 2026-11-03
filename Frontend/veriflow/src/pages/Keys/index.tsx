@@ -35,6 +35,7 @@ import {
   CheckCircleOutlineRounded as VerifyIcon,
   SendRounded as IssueIcon,
   SecurityRounded as SecurityIcon,
+  DeleteRounded as DeleteIcon,
 } from '@mui/icons-material';
 import {
   useKeysQuery,
@@ -42,6 +43,7 @@ import {
   useCreateKeyMutation,
   useRotateKeyMutation,
   useRevokeKeyMutation,
+  useDeleteKeyMutation,
   useExportPrivateKeyMutation,
   useIssueTokenMutation,
   useVerifyTokenMutation,
@@ -58,13 +60,22 @@ import { CloseRounded as CloseIcon } from '@mui/icons-material';
 
 export function KeysPage() {
   const user = useAuthStore((state) => state.user);
+  const currentUserId = Number(user?.id);
   const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
-  const canViewKeys = isAdmin || Boolean(user?.permissions?.['keys.view']);
+  const canDeleteAnyKey = isAdmin || Boolean(user?.permissions?.['keys.delete.any']);
+  const canDeleteOwnKey = canDeleteAnyKey || Boolean(user?.permissions?.['keys.delete']);
+  const canViewKeys = isAdmin || Boolean(user?.permissions?.['keys.view']) || canDeleteOwnKey;
   const canCreateKey = isAdmin || Boolean(user?.permissions?.['keys.create']);
   const canRotateKey = isAdmin || (Boolean(user?.permissions?.['keys.create']) && Boolean(user?.permissions?.['keys.update']));
   const canRevokeKey = isAdmin || Boolean(user?.permissions?.['keys.revoke']);
   const canIssueToken = isAdmin || Boolean(user?.permissions?.['keys.create']);
   const canCreateTags = isAdmin || Boolean(user?.permissions?.['tags.create']);
+
+  const isKeySelfCreated = (k?: KeyRecord | null) =>
+    Boolean(k && Number(k.created_by) === currentUserId && k.issued_by != null && Number(k.issued_by) === currentUserId);
+
+  const canDeleteKeyRecord = (k?: KeyRecord | null) =>
+    Boolean(k && (canDeleteAnyKey || (canDeleteOwnKey && isKeySelfCreated(k))));
 
   const { data: keysData, isLoading } = useKeysQuery();
   const { data: jwksData } = useJWKSQuery();
@@ -75,6 +86,7 @@ export function KeysPage() {
   const createKeyMutation = useCreateKeyMutation();
   const rotateKeyMutation = useRotateKeyMutation();
   const revokeKeyMutation = useRevokeKeyMutation();
+  const deleteKeyMutation = useDeleteKeyMutation();
   const exportPrivateMutation = useExportPrivateKeyMutation();
   const issueTokenMutation = useIssueTokenMutation();
   const verifyTokenMutation = useVerifyTokenMutation();
@@ -85,6 +97,8 @@ export function KeysPage() {
   const [rotateModalOpen, setRotateModalOpen] = useState(false);
   const [revokeModalOpen, setRevokeModalOpen] = useState(false);
   const [selectedKeyForRevoke, setSelectedKeyForRevoke] = useState<KeyRecord | null>(null);
+  const [deleteKeyModalOpen, setDeleteKeyModalOpen] = useState(false);
+  const [selectedKeyForDelete, setSelectedKeyForDelete] = useState<KeyRecord | null>(null);
 
   const [pemModalOpen, setPemModalOpen] = useState(false);
   const [selectedKeyForPem, setSelectedKeyForPem] = useState<KeyRecord | null>(null);
@@ -202,6 +216,16 @@ export function KeysPage() {
     setRevokeModalOpen(false);
     setSelectedKeyForRevoke(null);
     setRevokeReason('');
+  };
+
+  const handleConfirmDeleteKey = async () => {
+    if (!selectedKeyForDelete) return;
+    await deleteKeyMutation.mutateAsync({
+      keyId: selectedKeyForDelete.id,
+      force: canDeleteAnyKey,
+    });
+    setDeleteKeyModalOpen(false);
+    setSelectedKeyForDelete(null);
   };
 
   const handleOpenExportAuth = (k: KeyRecord) => {
@@ -329,16 +353,32 @@ export function KeysPage() {
     {
       key: 'name',
       label: 'Name / Description',
-      render: (_, k) => (
-        <Box>
-          <Typography variant="body2" sx={{ fontWeight: 600, color: '#F8FAFC' }}>
-            {k.name}
-          </Typography>
-          <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-            RSA-2048 / RS256
-          </Typography>
-        </Box>
-      ),
+      render: (_, k) => {
+        const isAdminIssued = k.issued_by == null || (k.created_by != null && Number(k.issued_by) !== Number(k.created_by));
+        return (
+          <Box>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="body2" sx={{ fontWeight: 600, color: '#F8FAFC' }}>
+                {k.name}
+              </Typography>
+              <Chip
+                size="small"
+                label={isAdminIssued ? `Admin-Assigned${k.issued_by ? ` (#${k.issued_by})` : ''}` : `Self-Created (#${k.created_by ?? 'N/A'})`}
+                sx={{
+                  height: 18,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  bgcolor: isAdminIssued ? 'rgba(250, 204, 21, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                  color: isAdminIssued ? '#FACC15' : '#38BDF8',
+                }}
+              />
+            </Stack>
+            <Typography variant="caption" sx={{ color: '#94A3B8' }}>
+              RSA-2048 / RS256
+            </Typography>
+          </Box>
+        );
+      },
     },
     {
       key: 'status',
@@ -382,13 +422,28 @@ export function KeysPage() {
     ...(canRevokeKey ? [{
       icon: <RevokeIcon fontSize="small" />,
       title: 'Revoke Key',
-      variant: 'error' as const,
+      variant: 'warning' as const,
       disabled: (k: KeyRecord) => k.status !== 'active',
       onClick: (k: KeyRecord) => {
         setSelectedKeyForRevoke(k);
         setRevokeModalOpen(true);
       },
     }] : []),
+    {
+      icon: <DeleteIcon fontSize="small" />,
+      title: canDeleteAnyKey
+        ? 'Permanently Delete Key (Admin)'
+        : !canDeleteOwnKey
+        ? "Requires 'keys.delete' permission to delete keys"
+        : 'Permanently Delete Key (Only keys you created yourself; Admin-assigned keys are locked)',
+      variant: 'error' as const,
+      disabled: (k: KeyRecord) => !canDeleteKeyRecord(k),
+      onClick: (k: KeyRecord) => {
+        if (!canDeleteKeyRecord(k)) return;
+        setSelectedKeyForDelete(k);
+        setDeleteKeyModalOpen(true);
+      },
+    },
   ];
 
   return (
@@ -1358,6 +1413,48 @@ export function KeysPage() {
         <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
           <Button onClick={() => setTagModalOpen(false)} sx={{ color: '#94A3B8' }}>
             Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Key Confirmation Modal */}
+      <Dialog open={deleteKeyModalOpen} onClose={() => setDeleteKeyModalOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: '#0B132B', color: '#F87171', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <DeleteIcon />
+          Permanently Delete Cryptographic Key
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: '#0B132B', pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Alert severity="error" sx={{ bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#FCA5A5', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+            {canDeleteAnyKey
+              ? 'Admin / Supervisor deletion: Permanently deletes this RSA keypair along with any bound inventory rules and shifts.'
+              : 'Self-created key deletion: Permanently deletes your personally generated RSA keypair and its bound rules.'}
+          </Alert>
+          {selectedKeyForDelete && (
+            <Paper sx={{ p: 2, bgcolor: '#07111D', border: '1px solid #1E293B', borderRadius: 2 }}>
+              <Typography variant="body2" sx={{ color: '#F8FAFC', fontWeight: 700 }}>
+                {selectedKeyForDelete.name}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#38BDF8', fontFamily: 'monospace', display: 'block', mt: 0.5 }}>
+                Key ID (kid): {selectedKeyForDelete.kid}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#94A3B8', fontFamily: 'monospace', display: 'block', mt: 0.5 }}>
+                UUID: {selectedKeyForDelete.id} | Status: {String(selectedKeyForDelete.status || '').toUpperCase()}
+              </Typography>
+            </Paper>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
+          <Button onClick={() => setDeleteKeyModalOpen(false)} sx={{ color: '#94A3B8' }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleConfirmDeleteKey}
+            disabled={deleteKeyMutation.isPending || !selectedKeyForDelete}
+          >
+            {deleteKeyMutation.isPending ? <CircularProgress size={20} /> : 'Permanently Delete Key'}
           </Button>
         </DialogActions>
       </Dialog>

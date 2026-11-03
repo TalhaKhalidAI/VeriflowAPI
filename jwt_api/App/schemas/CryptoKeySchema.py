@@ -44,9 +44,21 @@ class KeyResponse(BaseModel):
     public_key: str
     status: str
     created_by: Optional[int] = None
+    issued_by: Optional[int] = None
     created_at: Optional[str] = None
     revoked_at: Optional[str] = None
     revocation_reason: Optional[str] = None
+
+
+class DeleteKeyResponse(BaseModel):
+    """Response returned after permanently deleting a cryptographic key."""
+    status: str
+    message: str
+    key: KeyResponse
+    removed_rules: int = 0
+    removed_shifts: int = 0
+    removed_active_shifts: int = 0
+    removed_scans: int = 0
 
 
 class KeyListResponse(BaseModel):

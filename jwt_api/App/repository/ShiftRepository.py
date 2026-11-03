@@ -155,6 +155,7 @@ class ShiftRepository:
         key_id: str | uuid.UUID,
         expires_at: datetime,
         device_id: Optional[str] = None,
+        created_by: Optional[int] = None,
     ) -> ShiftModel:
         """Create a new active shift. Does NOT commit.
         
@@ -179,6 +180,7 @@ class ShiftRepository:
             key_id=parsed_key_id,
             expires_at=expires_at,
             device_id=device_id,
+            created_by=created_by,
             status="active"
         )
         self.session.add(shift)
@@ -253,6 +255,31 @@ class ShiftRepository:
         await self.session.refresh(shift)
         logger.warning(f"Revoked shift: {shift.id} - Reason: {reason}")
         return shift
+
+    async def delete_shift(self, shift_id: str | uuid.UUID) -> int:
+        """Permanently delete a shift and its scan history. Does NOT commit.
+
+        Returns the number of scan_history rows removed alongside the shift.
+
+        Raises:
+            ShiftNotFoundError: If shift doesn't exist.
+        """
+        from sqlalchemy import delete as sa_delete
+        from App.api.databases.MigrateTable import ScanHistory as ScanHistoryModel
+
+        shift = await self.get_by_id(shift_id, for_update=True)
+        if not shift:
+            raise ShiftNotFoundError(f"Shift {shift_id} not found")
+
+        # scan_history.shift_id is a non-cascading FK -> remove children first
+        result = await self.session.execute(
+            sa_delete(ScanHistoryModel).where(ScanHistoryModel.shift_id == shift.id)
+        )
+        await self.session.delete(shift)
+        await self._safe_flush()
+        removed_scans = result.rowcount or 0
+        logger.warning(f"Deleted shift: {shift_id} (and {removed_scans} scan records)")
+        return removed_scans
 
     async def expire_old_shifts(self) -> int:
         """Bulk expire shifts where expires_at < NOW() and status is 'active'.

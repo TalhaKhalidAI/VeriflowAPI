@@ -16,6 +16,7 @@ import type {
   VerifyTokenResponse,
   GenerateTagQRPayload,
   ProductTagQRResponse,
+  DeleteKeyResponse,
 } from './types';
 
 export const useKeysQuery = (statusFilter?: string) => {
@@ -170,6 +171,26 @@ export const useGenerateTagQRMutation = () => {
     },
     onError: (err: any) => {
       ToastMsgs.error(err?.response?.data?.detail || err?.message || 'Failed to generate product tag QR');
+    },
+  });
+};
+
+export const useDeleteKeyMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ keyId, force = false }: { keyId: string; force?: boolean }) => {
+      const url = force ? `/keys/${keyId}?force=true` : `/keys/${keyId}`;
+      return await http.delete<DeleteKeyResponse>(url);
+    },
+    onSuccess: (res) => {
+      const extra = res.removed_shifts ? ` (+${res.removed_shifts} shifts, ${res.removed_scans} scans)` : '';
+      ToastMsgs.warning(`Key ${res.key.kid} permanently deleted${extra}`);
+      queryClient.invalidateQueries({ queryKey: ['keys'] });
+      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      queryClient.invalidateQueries({ queryKey: ['rules'] });
+    },
+    onError: (err: any) => {
+      ToastMsgs.error(err?.response?.data?.detail || err?.message || 'Failed to delete key');
     },
   });
 };
