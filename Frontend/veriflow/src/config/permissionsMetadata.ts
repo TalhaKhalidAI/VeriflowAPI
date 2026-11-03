@@ -15,6 +15,7 @@ export const PERMISSION_METADATA: Record<string, PermissionMeta> = {
   "user.delete.self": { label: "Delete Own Account", description: "Soft-delete own account with password confirmation" },
   "user.history.view": { label: "View Personal History", description: "View own shift logs and verification scan records" },
   "user.history.delete": { label: "Delete Personal Scan Log", description: "Permanently remove personal scan logs" },
+  "user.delete_all_data": { label: "Delete All App SQLite Data (Android)", description: "Allows wiping all local SQLite data (scans, rules, keys) in the VeriFlow Android mobile app", badge: "ANDROID APP", color: "#EF4444" },
   "user.self.enable": { label: "Self Enablement", description: "Reactivate own account with password" },
   "user.disable.self": { label: "Self Deactivation", description: "Temporarily disable own account with password" },
   "user.view.any": { label: "View Any User", description: "View system user accounts directory" },

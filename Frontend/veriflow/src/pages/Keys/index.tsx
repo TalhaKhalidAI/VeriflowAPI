@@ -1,5 +1,5 @@
 // src/pages/Keys/index.tsx
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -50,6 +50,7 @@ import {
   useGenerateTagQRMutation,
 } from './query';
 import { useMFAStatusQuery } from '../Security/query';
+import { useAdminUsersQuery } from '../Admin/query';
 import type { KeyRecord, VerifyTokenResponse } from './types';
 import { ToastMsgs } from '../../api/toastUtils';
 import { http } from '../../api/http/https';
@@ -80,8 +81,44 @@ export function KeysPage() {
   const { data: keysData, isLoading } = useKeysQuery();
   const { data: jwksData } = useJWKSQuery();
   const { data: mfaStatus } = useMFAStatusQuery();
+  const { data: usersData = [] } = useAdminUsersQuery({ show_permissions: false });
   const isMFAEnabled = Boolean(user?.mfa_enabled || mfaStatus?.mfa_enabled);
   const activeMFAMethod = user?.mfa_method || mfaStatus?.mfa_method || "totp";
+
+  // Build user options list (ensuring current logged-in user is always present)
+  const userOptions = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; email: string; role: string }>();
+    if (currentUserId) {
+      map.set(currentUserId, {
+        id: currentUserId,
+        name: user?.name || user?.email?.split('@')[0] || `User #${currentUserId}`,
+        email: user?.email || '',
+        role: user?.role || user?.user_role || 'user',
+      });
+    }
+    (usersData || []).forEach((u) => {
+      if (!u?.id) return;
+      map.set(Number(u.id), {
+        id: Number(u.id),
+        name: u.name || u.email?.split('@')[0] || `User #${u.id}`,
+        email: u.email || '',
+        role: u.role || u.user_role || 'user',
+      });
+    });
+    return Array.from(map.values());
+  }, [usersData, currentUserId, user]);
+
+  const userMap = useMemo(() => {
+    const m = new Map<number, { id: number; name: string; email: string; role: string }>();
+    userOptions.forEach((u) => m.set(u.id, u));
+    return m;
+  }, [userOptions]);
+
+  const getUserLabel = (uid?: number | null) => {
+    if (uid == null) return 'System / Admin';
+    const info = userMap.get(Number(uid));
+    return info ? `${info.name} (#${info.id})` : `User #${uid}`;
+  };
 
   const createKeyMutation = useCreateKeyMutation();
   const rotateKeyMutation = useRotateKeyMutation();
@@ -126,7 +163,7 @@ export function KeysPage() {
 
   // Forms
   const [createForm, setCreateForm] = useState({ name: '', kid: '', key_size: 2048, target_user_id: '' });
-  const [rotateForm, setRotateForm] = useState({ name: '', key_size: 2048 });
+  const [rotateForm, setRotateForm] = useState({ name: '', key_size: 2048, target_user_id: '' });
   const [revokeReason, setRevokeReason] = useState('');
 
   const [issueForm, setIssueForm] = useState({
@@ -141,6 +178,7 @@ export function KeysPage() {
     batch: 'BATCH-2026-X',
     warehouse: 'WH-CENTRAL-01',
     key_id: '',
+    target_user_id: '',
     duration: 30,
     unit: 'days' as 'days' | 'hours' | 'minutes' | 'weeks' | 'months' | 'years',
     qr_only: false,
@@ -199,9 +237,10 @@ export function KeysPage() {
     await rotateKeyMutation.mutateAsync({
       name: rotateForm.name,
       key_size: rotateForm.key_size,
+      target_user_id: rotateForm.target_user_id ? Number(rotateForm.target_user_id) : undefined,
     });
     setRotateModalOpen(false);
-    setRotateForm({ name: '', key_size: 2048 });
+    setRotateForm({ name: '', key_size: 2048, target_user_id: '' });
   };
 
   const handleRevokeSubmit = async () => {
@@ -363,7 +402,11 @@ export function KeysPage() {
               </Typography>
               <Chip
                 size="small"
-                label={isAdminIssued ? `Admin-Assigned${k.issued_by ? ` (#${k.issued_by})` : ''}` : `Self-Created (#${k.created_by ?? 'N/A'})`}
+                label={
+                  isAdminIssued
+                    ? `Admin-Assigned to ${getUserLabel(k.created_by)}${k.issued_by ? ` (by ${getUserLabel(k.issued_by)})` : ''}`
+                    : `Self-Created (${getUserLabel(k.created_by)})`
+                }
                 sx={{
                   height: 18,
                   fontSize: 10,
@@ -602,16 +645,26 @@ export function KeysPage() {
             size="small"
             helperText="Leave empty to auto-generate a unique timestamped kid"
           />
-          {isAdmin && (
-            <TextField
-              label="Target User ID (Admin Delegation) - Optional"
-              placeholder="e.g. 2"
-              value={createForm.target_user_id}
-              onChange={(e) => setCreateForm({ ...createForm, target_user_id: e.target.value })}
-              fullWidth
-              size="small"
-            />
-          )}
+          <TextField
+            select
+            label="Select User (Key Owner)"
+            value={createForm.target_user_id || String(currentUserId || '')}
+            onChange={(e) => setCreateForm({ ...createForm, target_user_id: e.target.value })}
+            fullWidth
+            size="small"
+            disabled={!isAdmin && userOptions.length <= 1}
+            helperText={
+              isAdmin
+                ? 'Select a user by name to assign this cryptographic key (captures User ID automatically)'
+                : `Assigned to your account (${user?.name || user?.email || 'Self'} — ID #${currentUserId})`
+            }
+          >
+            {(isAdmin ? userOptions : userOptions.filter((u) => u.id === currentUserId)).map((u) => (
+              <MenuItem key={u.id} value={String(u.id)}>
+                👤 {u.name} {u.email ? `(${u.email})` : ''} — ID #{u.id} {u.id === currentUserId ? '• (You)' : `• ${u.role.toUpperCase()}`}
+              </MenuItem>
+            ))}
+          </TextField>
           <FormControl fullWidth size="small">
             <InputLabel>Key Bit Size</InputLabel>
             <Select
@@ -648,6 +701,22 @@ export function KeysPage() {
             fullWidth
             size="small"
           />
+          <TextField
+            select
+            label="Select User (Key Owner)"
+            value={rotateForm.target_user_id || String(currentUserId || '')}
+            onChange={(e) => setRotateForm({ ...rotateForm, target_user_id: e.target.value })}
+            fullWidth
+            size="small"
+            disabled={!isAdmin && userOptions.length <= 1}
+            helperText="Select the user account that will own the rotated signing key"
+          >
+            {(isAdmin ? userOptions : userOptions.filter((u) => u.id === currentUserId)).map((u) => (
+              <MenuItem key={u.id} value={String(u.id)}>
+                👤 {u.name} {u.email ? `(${u.email})` : ''} — ID #{u.id} {u.id === currentUserId ? '• (You)' : `• ${u.role.toUpperCase()}`}
+              </MenuItem>
+            ))}
+          </TextField>
         </DialogContent>
         <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
           <Button onClick={() => setRotateModalOpen(false)} sx={{ color: '#94A3B8' }}>
@@ -875,6 +944,33 @@ export function KeysPage() {
 
           <TextField
             select
+            label="Select User (Token Subject)"
+            value={issueForm.target_user_id || String(currentUserId || '')}
+            onChange={(e) => {
+              const selectedUid = e.target.value;
+              const userKey = keys.find(
+                (k) => k.status === 'active' && Number(k.created_by) === Number(selectedUid)
+              );
+              setIssueForm({
+                ...issueForm,
+                target_user_id: selectedUid,
+                key_id: userKey ? userKey.id : issueForm.key_id,
+              });
+            }}
+            fullWidth
+            size="small"
+            disabled={!isAdmin && userOptions.length <= 1}
+            helperText="Select a user by name — automatically captures their User ID and matches their active signing key"
+          >
+            {(isAdmin ? userOptions : userOptions.filter((u) => u.id === currentUserId)).map((u) => (
+              <MenuItem key={u.id} value={String(u.id)}>
+                👤 {u.name} {u.email ? `(${u.email})` : ''} — ID #{u.id} {u.id === currentUserId ? '• (You)' : `• ${u.role.toUpperCase()}`}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
+            select
             label="Signing Key"
             value={issueForm.key_id}
             onChange={(e) => setIssueForm({ ...issueForm, key_id: e.target.value })}
@@ -884,21 +980,10 @@ export function KeysPage() {
             <MenuItem value="">Latest Active Key (Auto-detect)</MenuItem>
             {keys.map((k) => (
               <MenuItem key={k.id} value={k.id}>
-                {k.name} ({k.kid})
+                🔑 {k.name} ({k.kid}) — Owner: {getUserLabel(k.created_by)}
               </MenuItem>
             ))}
           </TextField>
-
-          {isAdmin && (
-            <TextField
-              label="Target User ID (Admin Delegation) - Optional"
-              placeholder="e.g. 2"
-              value={issueForm.target_user_id}
-              onChange={(e) => setIssueForm({ ...issueForm, target_user_id: e.target.value })}
-              fullWidth
-              size="small"
-            />
-          )}
 
           <TextField
             label="Duration (Minutes)"
@@ -1130,6 +1215,35 @@ export function KeysPage() {
 
               <TextField
                 select
+                label="Select User (Key Owner Filter)"
+                value={tagForm.target_user_id}
+                onChange={(e) => {
+                  const selectedUid = e.target.value;
+                  const matchingKey = selectedUid
+                    ? keys.find((k) => k.status === 'active' && Number(k.created_by) === Number(selectedUid))
+                    : undefined;
+                  setTagForm({
+                    ...tagForm,
+                    target_user_id: selectedUid,
+                    key_id: matchingKey ? matchingKey.id : '',
+                  });
+                }}
+                fullWidth
+                size="small"
+                helperText="Select a user by name to filter/auto-select their cryptographic signing key"
+              >
+                <MenuItem value="">
+                  <em>👥 All Users (Show All Available Signing Keys)</em>
+                </MenuItem>
+                {(isAdmin ? userOptions : userOptions.filter((u) => u.id === currentUserId)).map((u) => (
+                  <MenuItem key={u.id} value={String(u.id)}>
+                    👤 {u.name} {u.email ? `(${u.email})` : ''} — ID #{u.id} {u.id === currentUserId ? '• (You)' : ''}
+                  </MenuItem>
+                ))}
+              </TextField>
+
+              <TextField
+                select
                 label="Signing Cryptographic Key (kid / key_id)"
                 value={tagForm.key_id}
                 onChange={(e) => setTagForm({ ...tagForm, key_id: e.target.value })}
@@ -1140,11 +1254,13 @@ export function KeysPage() {
                 <MenuItem value="">
                   <em>Latest Active Key (Auto-resolved)</em>
                 </MenuItem>
-                {keys.map((k) => (
-                  <MenuItem key={k.id} value={k.id}>
-                    🔑 {k.name} (kid: {k.kid}) — {k.status ? k.status.toUpperCase() : 'ACTIVE'}
-                  </MenuItem>
-                ))}
+                {keys
+                  .filter((k) => !tagForm.target_user_id || Number(k.created_by) === Number(tagForm.target_user_id))
+                  .map((k) => (
+                    <MenuItem key={k.id} value={k.id}>
+                      🔑 {k.name} (kid: {k.kid}) — Owner: {getUserLabel(k.created_by)} ({k.status ? k.status.toUpperCase() : 'ACTIVE'})
+                    </MenuItem>
+                  ))}
               </TextField>
 
               {/* Conditional Mode: Standard Form vs Raw JSON Editor */}

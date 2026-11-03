@@ -24,27 +24,77 @@ export interface UserQueryOptions {
 export const useAdminUsersQuery = (options: UserQueryOptions & { enabled?: boolean } = {}) => {
   const { show_disabled = true, show_deleted = false, show_permissions = true, enabled } = options;
   const user = useAuthStore((state) => state.user);
-  const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
-  const canViewAll =
-    isAdmin ||
-    Boolean(user?.permissions?.['admin.users.view']) ||
-    Boolean(user?.permissions?.['user.view.any']) ||
-    Boolean(user?.permissions?.['admin.access']) ||
-    Boolean(user?.permissions?.['admin.users']);
-  const canManageSelf =
-    Boolean(user?.permissions?.['user.view.self']) ||
-    Boolean(user?.permissions?.['user.update.self']) ||
-    Boolean(user?.permissions?.['user.update.profile']) ||
-    Boolean(user?.permissions?.['user.update.password']);
-
-  const isQueryEnabled = enabled !== undefined ? (enabled && (canViewAll || canManageSelf)) : (canViewAll || canManageSelf);
+  const isQueryEnabled = enabled !== undefined ? (enabled && Boolean(user?.id)) : Boolean(user?.id);
 
   return useQuery({
     queryKey: ['admin', 'users', show_disabled, show_deleted, show_permissions],
     enabled: isQueryEnabled,
     queryFn: async (): Promise<AdminUser[]> => {
-      // If user can only manage themselves, fetch their own profile directly
-      if (!canViewAll && canManageSelf) {
+      // 1. Fetch full user config accounts from GET /users/users_config/users
+      let usersList: any[] = [];
+      try {
+        const fullUsers = await http.get<{ users: any[] }>(
+          `/users/users_config/users?limit=200&show_disabled=${show_disabled}&show_deleted=${show_deleted}&show_permissions=${show_permissions}`
+        );
+        usersList = fullUsers?.users || [];
+      } catch (err) {
+        console.warn('Could not load user accounts from users_config/users', err);
+      }
+
+      // 2. Fetch permissions mapping if requested and user is admin/authorized
+      let permUsers: Record<string, any> = {};
+        const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.user_role?.toLowerCase() === 'admin';
+        const canViewPerms =
+          isAdmin ||
+          Boolean(user?.permissions?.['admin.users.view']) ||
+          Boolean(user?.permissions?.['admin.access']) ||
+          Boolean(user?.permissions?.['admin.users']);
+        if (show_permissions && canViewPerms) {
+          try {
+            const permData = await http.get<{
+              users: Record<string, { email: string; name: string; role: string; permissions: Record<string, boolean> }>;
+            }>('/admin/admin_access/users/permissions?include_user_info=true&limit=200');
+            permUsers = permData.users || {};
+          } catch (e) {
+            console.warn('Could not load permissions mapping', e);
+          }
+        }
+
+        // If usersList was returned from /users/users_config/users, map directly
+        if (usersList.length > 0) {
+          return usersList.map((u: any) => {
+            const pInfo = permUsers[String(u.id)] || {};
+            return {
+              id: u.id,
+              email: u.email || pInfo.email || '',
+              name: u.name || pInfo.name || '',
+              role: u.user_role || pInfo.role || 'user',
+              user_role: u.user_role || pInfo.role || 'user',
+              disabled: Boolean(u.disabled),
+              is_deleted: Boolean(u.is_deleted),
+              permissions: show_permissions ? (u.permissions || pInfo.permissions || {}) : {},
+              mfa_enabled: Boolean(u.mfa_enabled),
+              mfa_method: u.mfa_method,
+            };
+          });
+        }
+
+        // Fallback if permUsers exists
+        if (Object.keys(permUsers).length > 0) {
+          return Object.entries(permUsers).map(([idStr, u]: [string, any]) => ({
+            id: Number(idStr),
+            email: u.email || '',
+            name: u.name || '',
+            role: u.role || 'user',
+            user_role: u.role || 'user',
+            disabled: false,
+            is_deleted: false,
+            permissions: show_permissions ? (u.permissions || {}) : {},
+            mfa_enabled: false,
+          }));
+        }
+
+        // Final fallback: return current user's own profile
         try {
           const profile = await http.get<any>('/users/users_config/me');
           if (profile && profile.id) {
@@ -64,65 +114,22 @@ export const useAdminUsersQuery = (options: UserQueryOptions & { enabled?: boole
         } catch (e) {
           console.warn('Could not fetch self profile', e);
         }
-      }
 
-      // 1. Fetch full user config accounts from GET /users/users_config/users
-      let usersList: any[] = [];
-      try {
-        const fullUsers = await http.get<{ users: any[] }>(
-          `/users/users_config/users?limit=200&show_disabled=${show_disabled}&show_deleted=${show_deleted}&show_permissions=${show_permissions}`
-        );
-        usersList = fullUsers?.users || [];
-      } catch (err) {
-        console.warn('Could not load user accounts from users_config/users', err);
-      }
-
-      // 2. Fetch permissions mapping if requested
-      let permUsers: Record<string, any> = {};
-      if (show_permissions) {
-        try {
-          const permData = await http.get<{
-            users: Record<string, { email: string; name: string; role: string; permissions: Record<string, boolean> }>;
-          }>('/admin/admin_access/users/permissions?include_user_info=true&limit=200');
-          permUsers = permData.users || {};
-        } catch (e) {
-          console.warn('Could not load permissions mapping', e);
+        if (user?.id) {
+          return [{
+            id: Number(user.id),
+            email: user.email || '',
+            name: user.name || '',
+            role: user.role || user.user_role || 'user',
+            user_role: user.user_role || user.role || 'user',
+            disabled: false,
+            is_deleted: false,
+            permissions: user.permissions || {},
+          }];
         }
-      }
-
-      // If usersList was returned from /users/users_config/users, map directly
-      if (usersList.length > 0) {
-        return usersList.map((u: any) => {
-          const pInfo = permUsers[String(u.id)] || {};
-          return {
-            id: u.id,
-            email: u.email || pInfo.email || '',
-            name: u.name || pInfo.name || '',
-            role: u.user_role || pInfo.role || 'user',
-            user_role: u.user_role || pInfo.role || 'user',
-            disabled: Boolean(u.disabled),
-            is_deleted: Boolean(u.is_deleted),
-            permissions: show_permissions ? (u.permissions || pInfo.permissions || {}) : {},
-            mfa_enabled: Boolean(u.mfa_enabled),
-            mfa_method: u.mfa_method,
-          };
-        });
-      }
-
-      // Fallback if usersList is empty but permUsers exists
-      return Object.entries(permUsers).map(([idStr, u]: [string, any]) => ({
-        id: Number(idStr),
-        email: u.email || '',
-        name: u.name || '',
-        role: u.role || 'user',
-        user_role: u.role || 'user',
-        disabled: false,
-        is_deleted: false,
-        permissions: show_permissions ? (u.permissions || {}) : {},
-        mfa_enabled: false,
-      }));
-    },
-    staleTime: 1000 * 30,
+        return [];
+      },
+      staleTime: 1000 * 30,
   });
 };
 

@@ -16,6 +16,7 @@ class Permission(str, Enum):
     USER_DELETE_SELF = "user.delete.self"
     USER_HISTORY_VIEW = "user.history.view"
     USER_HISTORY_DELETE = "user.history.delete"
+    USER_DELETE_ALL_DATA = "user.delete_all_data"  # Android app permission to wipe all local SQLite data
     USER_SELF_ENABLE = "user.self.enable"
     USER_SELF_DISABLE = "user.disable.self"
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -34,6 +34,7 @@ import {
   useApplicableRulesQuery,
 } from './query';
 import { useKeysQuery } from '../Keys/query';
+import { useAdminUsersQuery } from '../Admin/query';
 import type { InventoryRule } from './types';
 import { Table, type TableColumn, type TableAction } from '../../components/Table';
 import { ToastMsgs } from '../../api/toastUtils';
@@ -49,8 +50,51 @@ export function RulesPage() {
 
   const { data: keysData } = useKeysQuery();
   const keys = keysData?.items || [];
+  const currentUserId = Number(user?.id);
+  const { data: usersData = [] } = useAdminUsersQuery({ show_permissions: false });
+
+  const userOptions = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; email: string; role: string }>();
+    if (currentUserId) {
+      map.set(currentUserId, {
+        id: currentUserId,
+        name: user?.name || user?.email?.split('@')[0] || `User #${currentUserId}`,
+        email: user?.email || '',
+        role: user?.role || user?.user_role || 'user',
+      });
+    }
+    (usersData || []).forEach((u) => {
+      if (!u?.id) return;
+      map.set(Number(u.id), {
+        id: Number(u.id),
+        name: u.name || u.email?.split('@')[0] || `User #${u.id}`,
+        email: u.email || '',
+        role: u.role || u.user_role || 'user',
+      });
+    });
+    return Array.from(map.values());
+  }, [usersData, currentUserId, user]);
+
+  const userMap = useMemo(() => {
+    const m = new Map<number, { id: number; name: string; email: string; role: string }>();
+    userOptions.forEach((u) => m.set(u.id, u));
+    return m;
+  }, [userOptions]);
+
+  const keyMap = useMemo(() => {
+    const m = new Map<string, (typeof keys)[number]>();
+    keys.forEach((k) => m.set(k.id, k));
+    return m;
+  }, [keys]);
+
+  const getUserLabel = (uid?: number | null) => {
+    if (uid == null) return 'System / Global';
+    const info = userMap.get(Number(uid));
+    return info ? `${info.name} (#${info.id})` : `User #${uid}`;
+  };
 
   const [applicableModalOpen, setApplicableModalOpen] = useState(false);
+  const [applicableUserId, setApplicableUserId] = useState('');
   const [applicableKeyId, setApplicableKeyId] = useState('');
   const { data: applicableRules = [], isLoading: isLoadingApplicable } = useApplicableRulesQuery(
     applicableKeyId || undefined
@@ -71,6 +115,7 @@ export function RulesPage() {
   const [testDialogOpen, setTestDialogOpen] = useState(false);
 
   // Form State
+  const [selectedRuleUserId, setSelectedRuleUserId] = useState<string>('');
   const [form, setForm] = useState({
     rule_name: '',
     matching_claim_key: 'warehouse_id',
@@ -86,11 +131,16 @@ export function RulesPage() {
 
   const handleOpenCreate = () => {
     setEditingRule(null);
+    const defaultUid = isAdmin ? '' : String(currentUserId || '');
+    const defaultKey = !isAdmin
+      ? keys.find((k) => Number(k.created_by) === currentUserId)?.id || ''
+      : '';
+    setSelectedRuleUserId(defaultUid);
     setForm({
       rule_name: '',
       matching_claim_key: 'warehouse_id',
       expected_value: 'WH-CENTRAL-01',
-      key_id: '',
+      key_id: defaultKey,
       is_active: true,
     });
     setModalOpen(true);
@@ -98,6 +148,8 @@ export function RulesPage() {
 
   const handleOpenEdit = (rule: InventoryRule) => {
     setEditingRule(rule);
+    const matchedKey = rule.key_id ? keyMap.get(rule.key_id) : undefined;
+    setSelectedRuleUserId(matchedKey?.created_by != null ? String(matchedKey.created_by) : '');
     setForm({
       rule_name: rule.rule_name,
       matching_claim_key: rule.matching_claim_key,
@@ -222,18 +274,34 @@ export function RulesPage() {
     },
     {
       key: 'key_id',
-      label: 'Scope',
-      render: (_, r) => (
-        <Chip
-          size="small"
-          label={r.key_id ? `Key: ${String(r.key_id).slice(0, 8)}...` : 'GLOBAL (All Keys)'}
-          sx={{
-            fontSize: '0.7rem',
-            bgcolor: r.key_id ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 255, 255, 0.06)',
-            color: r.key_id ? '#C084FC' : '#CBD5E1',
-          }}
-        />
-      ),
+      label: 'Scope / User',
+      render: (_, r) => {
+        const boundKey = r.key_id ? keyMap.get(r.key_id) : undefined;
+        return (
+          <Stack spacing={0.5} alignItems="flex-start">
+            <Chip
+              size="small"
+              label={
+                boundKey
+                  ? `🔑 ${boundKey.name} (${boundKey.kid})`
+                  : r.key_id
+                  ? `Key: ${String(r.key_id).slice(0, 8)}...`
+                  : 'GLOBAL (All Keys)'
+              }
+              sx={{
+                fontSize: '0.7rem',
+                bgcolor: r.key_id ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 255, 255, 0.06)',
+                color: r.key_id ? '#C084FC' : '#CBD5E1',
+              }}
+            />
+            {boundKey?.created_by != null && (
+              <Typography variant="caption" sx={{ color: '#94A3B8', fontSize: '0.68rem' }}>
+                👤 {getUserLabel(boundKey.created_by)}
+              </Typography>
+            )}
+          </Stack>
+        );
+      },
     },
   ];
 
@@ -414,9 +482,48 @@ export function RulesPage() {
           <TextField
             select
             fullWidth
+            label="Select User (Key Owner)"
+            value={selectedRuleUserId}
+            onChange={(e) => {
+              const uid = e.target.value;
+              setSelectedRuleUserId(uid);
+              if (!uid) {
+                setForm({ ...form, key_id: '' });
+              } else {
+                const userKeys = keys.filter((k) => Number(k.created_by) === Number(uid));
+                const activeKey = userKeys.find((k) => k.status === 'active') || userKeys[0];
+                setForm({ ...form, key_id: activeKey ? activeKey.id : '' });
+              }
+            }}
+            disabled={!isAdmin && userOptions.length <= 1}
+            helperText="Select a user by name to filter their cryptographic keys and auto-select their ID"
+            sx={{ mb: 2 }}
+          >
+            {isAdmin && (
+              <MenuItem value="">
+                <em>🌐 All Users / Global Policy</em>
+              </MenuItem>
+            )}
+            {(isAdmin ? userOptions : userOptions.filter((u) => u.id === currentUserId)).map((u) => (
+              <MenuItem key={u.id} value={String(u.id)}>
+                👤 {u.name} {u.email ? `(${u.email})` : ''} — ID #{u.id} {u.id === currentUserId ? '• (You)' : `• ${u.role.toUpperCase()}`}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
+            select
+            fullWidth
             label="Target Cryptographic Key"
             value={form.key_id}
-            onChange={(e) => setForm({ ...form, key_id: e.target.value })}
+            onChange={(e) => {
+              const kidVal = e.target.value;
+              const matched = kidVal ? keyMap.get(kidVal) : undefined;
+              if (matched?.created_by != null) {
+                setSelectedRuleUserId(String(matched.created_by));
+              }
+              setForm({ ...form, key_id: kidVal });
+            }}
             helperText={
               isAdmin
                 ? "Select a specific key to bind this policy, or choose Global to enforce across all tokens."
@@ -424,16 +531,18 @@ export function RulesPage() {
             }
             sx={{ mb: 2 }}
           >
-            {isAdmin && (
+            {isAdmin && !selectedRuleUserId && (
               <MenuItem value="">
                 <em>🌐 Global Verification Policy (All Keys)</em>
               </MenuItem>
             )}
-            {keys.map((k) => (
-              <MenuItem key={k.id} value={k.id}>
-                🔑 {k.name} (kid: {k.kid}) — {k.status ? k.status.toUpperCase() : "ACTIVE"}
-              </MenuItem>
-            ))}
+            {keys
+              .filter((k) => !selectedRuleUserId || Number(k.created_by) === Number(selectedRuleUserId))
+              .map((k) => (
+                <MenuItem key={k.id} value={k.id}>
+                  🔑 {k.name} (kid: {k.kid}) — 👤 {getUserLabel(k.created_by)} ({k.status ? k.status.toUpperCase() : "ACTIVE"})
+                </MenuItem>
+              ))}
           </TextField>
 
           <TextField
@@ -505,6 +614,34 @@ export function RulesPage() {
           <TextField
             select
             fullWidth
+            label="Select User (Filter Keys by User)"
+            value={applicableUserId}
+            onChange={(e) => {
+              const uid = e.target.value;
+              setApplicableUserId(uid);
+              if (!uid) {
+                setApplicableKeyId('');
+              } else {
+                const userKey = keys.find((k) => Number(k.created_by) === Number(uid));
+                setApplicableKeyId(userKey ? userKey.id : '');
+              }
+            }}
+            size="small"
+            helperText="Select a user by name to filter applicable verification keys for that user"
+          >
+            <MenuItem value="">
+              <em>👥 All Users / Global</em>
+            </MenuItem>
+            {userOptions.map((u) => (
+              <MenuItem key={u.id} value={String(u.id)}>
+                👤 {u.name} {u.email ? `(${u.email})` : ''} — ID #{u.id}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
+            select
+            fullWidth
             label="Verification Signing Key Context (key_id)"
             value={applicableKeyId}
             onChange={(e) => setApplicableKeyId(e.target.value)}
@@ -514,11 +651,13 @@ export function RulesPage() {
             <MenuItem value="">
               <em>All / Global Context Only (No specific key)</em>
             </MenuItem>
-            {keys.map((k) => (
-              <MenuItem key={k.id} value={k.id}>
-                🔑 {k.name} (kid: {k.kid}) — {k.status ? k.status.toUpperCase() : "ACTIVE"}
-              </MenuItem>
-            ))}
+            {keys
+              .filter((k) => !applicableUserId || Number(k.created_by) === Number(applicableUserId))
+              .map((k) => (
+                <MenuItem key={k.id} value={k.id}>
+                  🔑 {k.name} (kid: {k.kid}) — 👤 {getUserLabel(k.created_by)} ({k.status ? k.status.toUpperCase() : "ACTIVE"})
+                </MenuItem>
+              ))}
           </TextField>
 
           {isLoadingApplicable ? (

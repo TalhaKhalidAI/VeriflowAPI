@@ -1,5 +1,5 @@
 // src/pages/Shifts/index.tsx
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -47,6 +47,7 @@ import {
 import type { StartShiftResponse, ReissueShiftResponse, ShiftRecord } from './types';
 import { Table, type TableColumn, type TableAction } from '../../components/Table';
 import { useKeysQuery } from '../Keys/query';
+import { useAdminUsersQuery } from '../Admin/query';
 import { ToastMsgs } from '../../api/toastUtils';
 import { useAuthStore } from '../../store/authStore';
 
@@ -70,7 +71,51 @@ export function ShiftsPage() {
   const { data: activeShift, isLoading: isLoadingActive } = useActiveShiftQuery();
   const { data: shiftsData, isLoading: isLoadingShifts } = useShiftsQuery();
   const { data: keysData } = useKeysQuery('active');
+  const { data: usersData = [] } = useAdminUsersQuery({ show_permissions: false });
   const keys = keysData?.items || [];
+
+  const userOptions = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; email: string; role: string }>();
+    if (currentUserId) {
+      map.set(currentUserId, {
+        id: currentUserId,
+        name: user?.name || user?.email?.split('@')[0] || `User #${currentUserId}`,
+        email: user?.email || '',
+        role: user?.role || user?.user_role || 'user',
+      });
+    }
+    (usersData || []).forEach((u) => {
+      if (!u?.id) return;
+      map.set(Number(u.id), {
+        id: Number(u.id),
+        name: u.name || u.email?.split('@')[0] || `User #${u.id}`,
+        email: u.email || '',
+        role: u.role || u.user_role || 'user',
+      });
+    });
+    (shiftsData?.items || []).forEach((s) => {
+      if (!s?.user_id || map.has(Number(s.user_id))) return;
+      map.set(Number(s.user_id), {
+        id: Number(s.user_id),
+        name: s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`,
+        email: s.user_email || '',
+        role: 'user',
+      });
+    });
+    return Array.from(map.values());
+  }, [usersData, shiftsData, currentUserId, user]);
+
+  const userMap = useMemo(() => {
+    const m = new Map<number, { id: number; name: string; email: string; role: string }>();
+    userOptions.forEach((u) => m.set(u.id, u));
+    return m;
+  }, [userOptions]);
+
+  const getUserLabel = (uid?: number | null) => {
+    if (uid == null) return 'Admin';
+    const info = userMap.get(Number(uid));
+    return info ? `${info.name} (#${info.id})` : `User #${uid}`;
+  };
 
   const startShiftMutation = useStartShiftMutation();
   const reissueMutation = useReissueActiveShiftMutation();
@@ -229,11 +274,11 @@ export function ShiftsPage() {
           <Box>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="body2" fontWeight={600} sx={{ color: '#F8FAFC' }}>
-                {s.user_name || s.user_email?.split('@')[0] || `User #${s.user_id}`}
+                {s.user_name || userMap.get(Number(s.user_id))?.name || s.user_email?.split('@')[0] || `User #${s.user_id}`} (#{s.user_id})
               </Typography>
               <Chip
                 size="small"
-                label={isAdminIssued ? (s.created_by ? `Assigned by #${s.created_by}` : 'Admin-Assigned') : 'Self-Created'}
+                label={isAdminIssued ? (s.created_by ? `Assigned by ${getUserLabel(s.created_by)}` : 'Admin-Assigned') : 'Self-Created'}
                 sx={{
                   height: 18,
                   fontSize: 10,
@@ -575,6 +620,37 @@ export function ShiftsPage() {
             select
             fullWidth
             size="small"
+            label="Select Operator / User"
+            value={startForm.target_user_id || String(currentUserId || '')}
+            onChange={(e) => {
+              const selectedUid = e.target.value;
+              const userKey = keys.find(
+                (k) => k.status === 'active' && Number(k.created_by) === Number(selectedUid)
+              );
+              setStartForm({
+                ...startForm,
+                target_user_id: selectedUid,
+                key_id: userKey ? userKey.id : startForm.key_id,
+              });
+            }}
+            disabled={!isAdmin && userOptions.length <= 1}
+            helperText={
+              isAdmin
+                ? 'Select a user by name — automatically captures their User ID and matches their active signing key'
+                : `Starting shift for your account (${user?.name || user?.email || 'Self'} — ID #${currentUserId})`
+            }
+          >
+            {(isAdmin ? userOptions : userOptions.filter((u) => u.id === currentUserId)).map((u) => (
+              <MenuItem key={u.id} value={String(u.id)}>
+                👤 {u.name} {u.email ? `(${u.email})` : ''} — ID #{u.id} {u.id === currentUserId ? '• (You)' : `• ${u.role.toUpperCase()}`}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
+            select
+            fullWidth
+            size="small"
             label="Cryptographic Signing Key (key_id)"
             value={startForm.key_id}
             onChange={(e) => setStartForm({ ...startForm, key_id: e.target.value })}
@@ -585,7 +661,7 @@ export function ShiftsPage() {
             </MenuItem>
             {keys.map((k) => (
               <MenuItem key={k.id} value={k.id}>
-                🔑 {k.name} (kid: {k.kid}) {k.status === 'active' ? '• Active' : `• ${k.status}`}
+                🔑 {k.name} (kid: {k.kid}) — Owner: {getUserLabel(k.created_by)} {k.status === 'active' ? '• Active' : `• ${k.status}`}
               </MenuItem>
             ))}
           </TextField>
@@ -611,17 +687,6 @@ export function ShiftsPage() {
             fullWidth
             size="small"
           />
-
-          {isAdmin && (
-            <TextField
-              label="Target User ID (Admin Delegation) - Optional"
-              placeholder="e.g. 2"
-              value={startForm.target_user_id}
-              onChange={(e) => setStartForm({ ...startForm, target_user_id: e.target.value })}
-              fullWidth
-              size="small"
-            />
-          )}
 
           {/* Shift Parameter Checkboxes */}
           <Box
@@ -704,16 +769,26 @@ export function ShiftsPage() {
             Re-mints a fresh <code>shift_token</code> JWT for your currently active session, available both as a scannable on-screen QR code and raw token string.
           </Typography>
 
-          {isAdmin && (
-            <TextField
-              label="Target User ID (Admin Delegation) - Optional"
-              placeholder="Leave empty to reissue own token"
-              value={reissueForm.target_user_id}
-              onChange={(e) => setReissueForm({ ...reissueForm, target_user_id: e.target.value })}
-              fullWidth
-              size="small"
-            />
-          )}
+          <TextField
+            select
+            label="Select Operator / User"
+            value={reissueForm.target_user_id || String(currentUserId || '')}
+            onChange={(e) => setReissueForm({ ...reissueForm, target_user_id: e.target.value })}
+            fullWidth
+            size="small"
+            disabled={!isAdmin && userOptions.length <= 1}
+            helperText={
+              isAdmin
+                ? 'Select a user by name to reissue their active shift token (captures User ID automatically)'
+                : `Reissuing active shift token for ${user?.name || user?.email || 'Self'} (ID #${currentUserId})`
+            }
+          >
+            {(isAdmin ? userOptions : userOptions.filter((u) => u.id === currentUserId)).map((u) => (
+              <MenuItem key={u.id} value={String(u.id)}>
+                👤 {u.name} {u.email ? `(${u.email})` : ''} — ID #{u.id} {u.id === currentUserId ? '• (You)' : `• ${u.role.toUpperCase()}`}
+              </MenuItem>
+            ))}
+          </TextField>
 
           {/* Reissue Parameter Checkboxes */}
           <Box
