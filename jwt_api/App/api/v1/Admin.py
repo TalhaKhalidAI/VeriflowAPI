@@ -99,6 +99,7 @@ async def update_account(
                 Permission.ADMIN_USERS_PROMOTE,
                 Permission.USER_UPDATE_SELF,
                 Permission.USER_UPDATE_PROFILE,
+                Permission.USER_UPDATE_EMAIL,
             ],
             mode="any",
             bypass_admin=False,
@@ -148,11 +149,12 @@ async def disable_account(
     user_id: int,
     payload: Optional[PasswordConfirmRequest] = None,
     current_user: Dict[str, Any] = Depends(require_permission(required_permissions=[
-                        Permission.ADMIN_USERS_DISABLE,
-                Permission.ADMIN_USERS_PROMOTE,
-                Permission.ADMIN_USERS_RESTORE,
-                Permission.ADMIN_SETTINGS_UPDATE,
-                Permission.USER_SELF_DISABLE,
+        Permission.ADMIN_USERS_DISABLE,
+        Permission.ADMIN_USERS_PROMOTE,
+        Permission.ADMIN_USERS_RESTORE,
+        Permission.ADMIN_SETTINGS_UPDATE,
+        Permission.USER_SELF_DISABLE,
+        Permission.USER_DISABLE,
     ],mode="any",bypass_admin=False,additional_dependency=get_current_user)),
     db: AsyncSession = Depends(get_db),
 ):
@@ -208,6 +210,7 @@ async def enable_account(
         require_permission(
             required_permissions=[
                 Permission.USER_SELF_ENABLE,
+                Permission.USER_ENABLE,
                 Permission.ADMIN_USER_ENABLE,
                 Permission.ADMIN_USERS_PROMOTE,
             ],
@@ -270,6 +273,9 @@ async def temp_token_maker(
                 Permission.ADMIN_USERS_PROMOTE,
                 Permission.ADMIN_USERS_RESTORE,
                 Permission.ADMIN_USERS_DISABLE,
+                Permission.USER_PROMOTE,
+                Permission.USER_RESTORE,
+                Permission.USER_DISABLE,
             ],
             mode="any",
             bypass_admin=True,
@@ -386,6 +392,7 @@ async def delete_account(
         require_permission(
             required_permissions=[
                 Permission.USER_DELETE_SELF,
+                Permission.USER_DELETE_ANY,
                 Permission.ADMIN_USERS_DELETE,
                 Permission.ADMIN_USERS_PROMOTE,
             ],
@@ -439,6 +446,7 @@ async def restore_account(
             required_permissions=[
                 Permission.ADMIN_USERS_RESTORE,
                 Permission.ADMIN_USERS_PROMOTE,
+                Permission.USER_RESTORE,
             ],
             mode="any",
             bypass_admin=False,
@@ -565,7 +573,7 @@ async def set_permissions(
     model: PermissionModel,
     current_user: Dict[str, Any] = Depends(
         require_permission(
-            required_permissions=[Permission.ADMIN_USERS_PROMOTE],
+            required_permissions=[Permission.ADMIN_USERS_PROMOTE, Permission.USER_PROMOTE],
             mode="any",
             bypass_admin=False,
         )
@@ -610,7 +618,7 @@ async def set_permissions_bulk(
     model: BulkPermissionModel,
     current_user: Dict[str, Any] = Depends(
         require_permission(
-            required_permissions=[Permission.ADMIN_USERS_PROMOTE],
+            required_permissions=[Permission.ADMIN_USERS_PROMOTE, Permission.USER_PROMOTE],
             mode="any",
             bypass_admin=False,
         )
@@ -660,7 +668,14 @@ async def get_users_permissions(
     include_user_info: bool = Query(False),
     current_user: Dict[str, Any] = Depends(
         require_permission(
-            required_permissions=[Permission.ADMIN_USERS_PROMOTE, Permission.ADMIN_USERS_VIEW],
+            required_permissions=[
+                Permission.ADMIN_USERS_PROMOTE,
+                Permission.ADMIN_USERS_VIEW,
+                Permission.ADMIN_ACCESS,
+                Permission.GET_USER_ASSIGNED_PERMISSIONS,
+                Permission.USER_VIEW_SELF,
+                Permission.USER_VIEW_ANY,
+            ],
             mode="any",
             bypass_admin=False,
         )
@@ -669,6 +684,24 @@ async def get_users_permissions(
 ):
     req_id = getattr(request.state, "request_id", "-")
     try:
+        cur_role = current_user.get("role")
+        cur_id = current_user.get("id")
+        cur_perms = current_user.get("permissions") or {}
+        if isinstance(cur_perms, str):
+            try:
+                import json
+                cur_perms = json.loads(cur_perms)
+            except Exception:
+                cur_perms = {}
+        is_admin = cur_role == "admin"
+        can_view_any = is_admin or cur_perms.get("admin.users.promote") or cur_perms.get("admin.users.view") or cur_perms.get("admin.access") or cur_perms.get("user.view.any")
+
+        # If user does not have view-any permissions, strictly restrict to their own account
+        if not can_view_any:
+            if user_id is not None and user_id != cur_id:
+                raise HTTPException(status_code=403, detail="You can only view your own permissions")
+            user_id = cur_id
+
         repo = UserRepository(db)
         data = await repo.get_user_permission_db(
             user_id=user_id,
@@ -704,7 +737,7 @@ async def remove_permissions(
     model: RemovePermissionsModel,
     current_user: Dict[str, Any] = Depends(
         require_permission(
-            required_permissions=[Permission.ADMIN_USERS_PROMOTE],
+            required_permissions=[Permission.ADMIN_USERS_PROMOTE, Permission.USER_PROMOTE],
             mode="any",
             bypass_admin=False,
         )

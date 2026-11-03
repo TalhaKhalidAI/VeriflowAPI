@@ -1,0 +1,352 @@
+{
+  "survived": [
+    {
+      "category": "Fuzzing",
+      "name": "Malformed JSON Syntax",
+      "method": "POST",
+      "url": "/app/v1/auth/basic_auth/login",
+      "status": 422,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",1],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting property name enclosed in double quotes\"}}],\"request_id\":"
+    },
+    {
+      "category": "Fuzzing",
+      "name": "Empty Body on Required Schema",
+      "method": "POST",
+      "url": "/app/v1/auth/basic_auth/login",
+      "status": 422,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\",\"input\":null}],\"request_id\":\"04f4f4a6-6447-469b-a52a-98a23f4493a4\"}"
+    },
+    {
+      "category": "Fuzzing",
+      "name": "Binary Garbage Payload",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 422,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",0],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting value\"}}],\"request_id\":\"b6d863ae-7266-411e-ba01-3515a1298"
+    },
+    {
+      "category": "Fuzzing",
+      "name": "Extremely Deep Nested JSON",
+      "method": "POST",
+      "url": "/app/v1/rules/evaluate",
+      "status": 401,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"6c706b20-bdd1-43db-a3f7-a9736c55f34e\"}"
+    },
+    {
+      "category": "Fuzzing",
+      "name": "Unicode & Null Bytes in JSON",
+      "method": "POST",
+      "url": "/app/v1/auth/basic_auth/signup",
+      "status": 422,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"email\"],\"msg\":\"value is not a valid email address: The email address contains invalid characters before the @-sign: U+0000."
+    },
+    {
+      "category": "Fuzzing",
+      "name": "SQL Injection in Login Body",
+      "method": "POST",
+      "url": "/app/v1/auth/basic_auth/login",
+      "status": 422,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"missing\",\"loc\":[\"body\",\"username\"],\"msg\":\"Field required\",\"input\":{\"email\":\"' OR '1'='1\",\"password\":\"***redacted***\"}}],\"request_id\":\"5db5a4b6-a35a-4b5"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "Path Traversal in Shift ID",
+      "method": "GET",
+      "url": "/app/v1/shifts/..%2f..%2fetc%2fpasswd",
+      "status": 404,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Not Found\",\"status\":404,\"request_id\":\"0afb8358-e7fa-421a-aaa3-5e401bbeb7b2\"}"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "SQLi in Shift ID Path",
+      "method": "GET",
+      "url": "/app/v1/shifts/'%20OR%201=1--",
+      "status": 404,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Shift ' OR 1=1-- not found\",\"status\":404,\"request_id\":\"6936fcc7-1236-4032-9537-bab497456072\"}"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "UUID Overflow / Malformed in Key ID",
+      "method": "GET",
+      "url": "/app/v1/keys/not-a-valid-uuid-12345",
+      "status": 404,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"CryptoKey not-a-valid-uuid-12345 not found\",\"status\":404,\"request_id\":\"ac3a5961-2271-4bfc-9da2-2486ebbd094f\"}"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "SQLi in Query Param user_id",
+      "method": "GET",
+      "url": "/app/v1/shifts/?user_id=' OR 1=1--",
+      "status": 422,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"int_parsing\",\"loc\":[\"query\",\"user_id\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"' OR 1=1--\"}],\"request_id"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "Extreme Negative Offset",
+      "method": "GET",
+      "url": "/app/v1/shifts/?offset=-999999&limit=-5",
+      "status": 422,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"greater_than_equal\",\"loc\":[\"query\",\"limit\"],\"msg\":\"Input should be greater than or equal to 1\",\"input\":\"-5\",\"ctx\":{\"ge\":1}},{\"type\":\"greater_than_equal"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "Extreme Large Limit",
+      "method": "GET",
+      "url": "/app/v1/shifts/?limit=99999999",
+      "status": 422,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"less_than_equal\",\"loc\":[\"query\",\"limit\"],\"msg\":\"Input should be less than or equal to 100\",\"input\":\"99999999\",\"ctx\":{\"le\":100}}],\"request_id\":\"9516779c"
+    },
+    {
+      "category": "Injection/Params",
+      "name": "String where Int expected in limit",
+      "method": "GET",
+      "url": "/app/v1/shifts/?limit=drop_table",
+      "status": 422,
+      "expected": "4xx validation error",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"int_parsing\",\"loc\":[\"query\",\"limit\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"drop_table\"}],\"request_id\":"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Missing Authorization Header",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"No authentication token found\",\"status\":401,\"request_id\":\"3499dd41-8852-4bdd-87a3-3ecd172fb1d8\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Bearer with Empty Token",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"No authentication token found\",\"status\":401,\"request_id\":\"6e56dffe-77c9-4267-8aef-19d32b22735f\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Bearer with Garbage String",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"Invalid token\",\"status\":401,\"request_id\":\"844da160-f7fd-43fa-afd4-d45c87db58e2\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Alg: None Signature Bypass Attack",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"Invalid token\",\"status\":401,\"request_id\":\"c709bf34-41de-48a0-a63e-3eacef566ff3\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Tampered JWT Signature Attack",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"Invalid token\",\"status\":401,\"request_id\":\"050cda6e-ef4f-4ae4-aeaa-cbb8566477d1\"}"
+    },
+    {
+      "category": "Auth Attacks",
+      "name": "Symmetric Secret Guess (HMAC Confusion)",
+      "method": "GET",
+      "url": "/app/v1/users/users_config/me",
+      "status": 401,
+      "expected": "401 Unauthorized",
+      "snippet": "{\"error\":\"Invalid token\",\"status\":401,\"request_id\":\"372537f5-f256-41ec-a791-0ac1ea0debc4\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Disabling Admin Account",
+      "method": "POST",
+      "url": "/app/v1/admin/admin_access/account/disable/1",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"8b763c5c-5f58-4b20-b467-0e10adcf6bd4\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Deleting Admin Account",
+      "method": "DELETE",
+      "url": "/app/v1/admin/admin_access/account/1",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"309d2156-3066-4d4a-9008-df426f2ba9ff\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Setting Permissions",
+      "method": "POST",
+      "url": "/app/v1/admin/admin_access/set_permissions",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"44a371c7-9dd5-4bef-9762-3bf7f73216a9\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Exporting Private Key",
+      "method": "GET",
+      "url": "/app/v1/keys/123e4567-e89b-12d3-a456-426614174000/export-private",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"7e7c1531-a6c5-42c3-a724-cce10c4d3b41\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Rotating Server Keys",
+      "method": "POST",
+      "url": "/app/v1/keys/rotate",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"0c62b18e-f6a0-42a0-8ebf-701cae54f767\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Revoking Shift 1",
+      "method": "POST",
+      "url": "/app/v1/shifts/123e4567-e89b-12d3-a456-426614174000/revoke",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"8ccbf09e-b42c-4810-8a21-8fcd06b2b3e5\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Triggering Bulk Shift Expiry",
+      "method": "POST",
+      "url": "/app/v1/shifts/expire-old",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"a108a492-b3ef-444b-9150-3b9a9457b540\"}"
+    },
+    {
+      "category": "Privilege Escalation",
+      "name": "Normal User Starting Shift for Admin",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 401,
+      "expected": "403 Forbidden",
+      "snippet": "{\"error\":\"Authenticated user no longer exists\",\"status\":401,\"request_id\":\"b9dc835f-2a7f-4e52-b787-6e625af1d980\"}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Shift Duration = 0 hours",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 422,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"greater_than_equal\",\"loc\":[\"body\",\"duration_hours\"],\"msg\":\"Input should be greater than or equal to 1\",\"input\":0,\"ctx\":{\"ge\":1}}],\"request_id\":\"05ae624"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Shift Duration = -5 hours",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 422,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"greater_than_equal\",\"loc\":[\"body\",\"duration_hours\"],\"msg\":\"Input should be greater than or equal to 1\",\"input\":-5,\"ctx\":{\"ge\":1}}],\"request_id\":\"dfe520"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Shift Duration = 999999 hours",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 422,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"less_than_equal\",\"loc\":[\"body\",\"duration_hours\"],\"msg\":\"Input should be less than or equal to 24\",\"input\":999999,\"ctx\":{\"le\":24}}],\"request_id\":\"b259ea"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Start Shift for Non-Existent User 999999",
+      "method": "POST",
+      "url": "/app/v1/shifts/start",
+      "status": 404,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"User 999999 not found or inactive\",\"status\":404,\"request_id\":\"952109f1-c881-4723-b589-c15da4f7d3b7\"}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Checkout Shift with Non-Existent UUID",
+      "method": "POST",
+      "url": "/app/v1/shifts/00000000-0000-0000-0000-000000000000/checkout",
+      "status": 404,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"Shift 00000000-0000-0000-0000-000000000000 not found\",\"status\":404,\"request_id\":\"6d4bc465-4953-4710-b173-7a5c35d3ab12\"}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Checkout My Shift when No Active Shift",
+      "method": "POST",
+      "url": "/app/v1/shifts/checkout",
+      "status": 404,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"You do not have any currently active shift to checkout from\",\"status\":404,\"request_id\":\"6b71611c-eecd-4c70-a123-c5dcc987501b\"}"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Sync Empty Scans Array",
+      "method": "POST",
+      "url": "/app/v1/scans/shifts/00000000-0000-0000-0000-000000000000/sync",
+      "status": 422,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"too_short\",\"loc\":[\"body\",\"scans\"],\"msg\":\"List should have at least 1 item after validation, not 0\",\"input\":[],\"ctx\":{\"field_type\":\"List\",\"min_length\":1"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Create Rule with Empty Name",
+      "method": "POST",
+      "url": "/app/v1/rules/",
+      "status": 422,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"Validation failed\",\"details\":[{\"type\":\"string_too_short\",\"loc\":[\"body\",\"rule_name\"],\"msg\":\"String should have at least 1 character\",\"input\":\"\",\"ctx\":{\"min_length\":1}}],\"request_id\":\"5230e973"
+    },
+    {
+      "category": "Business Logic",
+      "name": "Verify Invalid RS256 Token String",
+      "method": "POST",
+      "url": "/app/v1/keys/tokens/verify",
+      "status": 400,
+      "expected": "Clean 4xx rejection",
+      "snippet": "{\"error\":\"Malformed token header: Invalid header padding\",\"status\":400,\"request_id\":\"f9b532fe-3e6a-4632-8c61-29d8e2396c0a\"}"
+    },
+    {
+      "category": "Concurrency",
+      "name": "Atomic shift creation",
+      "status": 409,
+      "snippet": "1 active, 0 properly rejected with 409"
+    },
+    {
+      "category": "Rate Limiting",
+      "name": "Rapid burst resilience",
+      "status": 200,
+      "snippet": "60 passed, 0 rate limited"
+    }
+  ],
+  "broken": [],
+  "warnings": [
+    {
+      "category": "Fuzzing",
+      "name": "1MB Payload Buffer",
+      "method": "POST",
+      "url": "/app/v1/scans/",
+      "status": 413,
+      "expected": "4xx handled cleanly",
+      "snippet": "{\"error\":\"Request body too large\",\"max_bytes\":1048576,\"max_human\":\"1.00 MB\"}"
+    }
+  ]
+}

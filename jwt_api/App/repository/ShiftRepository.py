@@ -1,8 +1,8 @@
 # App/repository/ShiftRepository.py
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
-from typing import Optional, List
+from sqlalchemy import select, update, func
+from typing import Optional, List, Tuple
 import logging
 from datetime import datetime, timezone
 import uuid
@@ -43,6 +43,16 @@ class ShiftRepository:
     # ================================================================
     # INTERNAL HELPERS
     # ================================================================
+    @staticmethod
+    def _parse_uuid(val: str | uuid.UUID) -> Optional[uuid.UUID]:
+        """Safely parse string or UUID object to prevent asyncpg type errors."""
+        if isinstance(val, uuid.UUID):
+            return val
+        try:
+            return uuid.UUID(str(val))
+        except (ValueError, AttributeError):
+            return None
+
     async def _safe_flush(self) -> None:
         """Flush pending ORM changes. Lets IntegrityError propagate so the
         caller can translate a specific constraint violation."""
@@ -51,10 +61,18 @@ class ShiftRepository:
     # ================================================================
     # BASIC CRUD
     # ================================================================
-    async def get_by_id(self, shift_id: str | uuid.UUID) -> Optional[ShiftModel]:
-        result = await self.session.execute(
-            select(ShiftModel).where(ShiftModel.id == shift_id)
-        )
+    async def get_by_id(
+        self, shift_id: str | uuid.UUID, for_update: bool = False
+    ) -> Optional[ShiftModel]:
+        parsed_id = self._parse_uuid(shift_id)
+        if not parsed_id:
+            return None
+
+        stmt = select(ShiftModel).where(ShiftModel.id == parsed_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+
+        result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_active_shift_by_user(self, user_id: int) -> Optional[ShiftModel]:
@@ -67,24 +85,66 @@ class ShiftRepository:
         )
         return result.scalars().first()
 
-    async def get_active_shifts(self) -> List[ShiftModel]:
+    async def get_active_shifts(self, limit: int = 50, offset: int = 0) -> List[ShiftModel]:
         """Get all currently active shifts (for the Admin dashboard)."""
         result = await self.session.execute(
             select(ShiftModel)
             .where(ShiftModel.status == "active")
             .order_by(ShiftModel.started_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         return list(result.scalars().all())
 
-    async def get_shifts_by_user(self, user_id: int, limit: int = 50) -> List[ShiftModel]:
+    async def get_shifts_by_user(
+        self, user_id: int, limit: int = 50, offset: int = 0
+    ) -> List[ShiftModel]:
         """Get shift history for a specific user."""
         result = await self.session.execute(
             select(ShiftModel)
             .where(ShiftModel.user_id == user_id)
             .order_by(ShiftModel.started_at.desc())
             .limit(limit)
+            .offset(offset)
         )
         return list(result.scalars().all())
+
+    async def list_shifts_filtered(
+        self,
+        user_id: Optional[int] = None,
+        active_only: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Tuple[List[ShiftModel], int]:
+        """
+        List shifts with flexible filtering:
+        - user_id: If specified, filter by worker user_id. If None, retrieve shifts across all users.
+        - active_only: If True, only retrieve status == 'active'. If False, retrieve all (active and inactive).
+        - limit / offset: Pagination.
+        Returns: (shifts_list, total_count)
+        """
+        stmt = select(ShiftModel)
+        count_stmt = select(func.count()).select_from(ShiftModel)
+
+        conditions = []
+        if user_id is not None:
+            conditions.append(ShiftModel.user_id == user_id)
+        if active_only:
+            conditions.append(ShiftModel.status == "active")
+
+        if conditions:
+            stmt = stmt.where(*conditions)
+            count_stmt = count_stmt.where(*conditions)
+
+        stmt = stmt.order_by(ShiftModel.started_at.desc()).limit(limit).offset(offset)
+
+        total_res = await self.session.execute(count_stmt)
+        total_count = total_res.scalar() or 0
+
+        shifts_res = await self.session.execute(stmt)
+        shifts = list(shifts_res.scalars().all())
+
+        return shifts, total_count
 
     # ================================================================
     # LIFECYCLE METHODS
@@ -95,6 +155,7 @@ class ShiftRepository:
         key_id: str | uuid.UUID,
         expires_at: datetime,
         device_id: Optional[str] = None,
+        created_by: Optional[int] = None,
     ) -> ShiftModel:
         """Create a new active shift. Does NOT commit.
         
@@ -109,12 +170,17 @@ class ShiftRepository:
                 f"User {user_id} already has an active shift ({existing.id})"
             )
 
+        parsed_key_id = self._parse_uuid(key_id)
+        if not parsed_key_id:
+            raise InfrastructureError(f"Invalid key_id format: {key_id}")
+
         # 2. Create the Shift
         shift = ShiftModel(
             user_id=user_id,
-            key_id=key_id,
+            key_id=parsed_key_id,
             expires_at=expires_at,
             device_id=device_id,
+            created_by=created_by,
             status="active"
         )
         self.session.add(shift)
@@ -123,6 +189,10 @@ class ShiftRepository:
             await self._safe_flush()
         except IntegrityError as e:
             msg = str(e.orig).lower()
+            if "unique" in msg or "idx_shifts_unique_active_user" in msg or "duplicate key" in msg:
+                raise ActiveShiftExistsError(
+                    f"User {user_id} already has an active shift"
+                ) from e
             if "foreign key constraint" in msg:
                 raise InfrastructureError(
                     f"Invalid user_id ({user_id}) or key_id ({key_id}) - foreign key violation"
@@ -146,7 +216,7 @@ class ShiftRepository:
 
         if shift.status != "active":
             raise InvalidShiftStateError(
-                f"Cannot complete shift {shift_id}: current status is '{shift.status}'"
+                f"Cannot complete shift {shift_id}: shift has already ended with status '{shift.status}'"
             )
 
         shift.status = "completed"
@@ -185,6 +255,31 @@ class ShiftRepository:
         await self.session.refresh(shift)
         logger.warning(f"Revoked shift: {shift.id} - Reason: {reason}")
         return shift
+
+    async def delete_shift(self, shift_id: str | uuid.UUID) -> int:
+        """Permanently delete a shift and its scan history. Does NOT commit.
+
+        Returns the number of scan_history rows removed alongside the shift.
+
+        Raises:
+            ShiftNotFoundError: If shift doesn't exist.
+        """
+        from sqlalchemy import delete as sa_delete
+        from App.api.databases.MigrateTable import ScanHistory as ScanHistoryModel
+
+        shift = await self.get_by_id(shift_id, for_update=True)
+        if not shift:
+            raise ShiftNotFoundError(f"Shift {shift_id} not found")
+
+        # scan_history.shift_id is a non-cascading FK -> remove children first
+        result = await self.session.execute(
+            sa_delete(ScanHistoryModel).where(ScanHistoryModel.shift_id == shift.id)
+        )
+        await self.session.delete(shift)
+        await self._safe_flush()
+        removed_scans = result.rowcount or 0
+        logger.warning(f"Deleted shift: {shift_id} (and {removed_scans} scan records)")
+        return removed_scans
 
     async def expire_old_shifts(self) -> int:
         """Bulk expire shifts where expires_at < NOW() and status is 'active'.

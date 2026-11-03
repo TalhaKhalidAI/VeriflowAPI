@@ -73,10 +73,12 @@ class AdminService:
         has_admin_update_permission = (
             current_user_perms.get("admin.settings.update", False)
             or current_user_perms.get("admin.users.promote", False)
+            or current_user_perms.get("user.promote", False)
         )
         has_self_update_permission = (
             current_user_perms.get("user.update.self", False)
             or current_user_perms.get("user.update.profile", False)
+            or current_user_perms.get("user.update.email", False)
         )
 
         if is_admin or has_admin_update_permission:
@@ -89,6 +91,19 @@ class AdminService:
         update_dict = update_data.model_dump(exclude_unset=True)
         if not update_dict:
             raise ValidationError("No fields to update")
+
+        # Granular self-update checks
+        if is_self and not (is_admin or has_admin_update_permission):
+            if "name" in update_dict and not (
+                current_user_perms.get("user.update.self", False)
+                or current_user_perms.get("user.update.profile", False)
+            ):
+                raise PermissionDeniedError("Permission 'user.update.profile' or 'user.update.self' required to update name")
+            if "email" in update_dict and not (
+                current_user_perms.get("user.update.self", False)
+                or current_user_perms.get("user.update.email", False)
+            ):
+                raise PermissionDeniedError("Permission 'user.update.email' or 'user.update.self' required to update email")
 
         sensitive_fields = ["user_role", "disabled", "is_active"]
         if not (is_admin or has_admin_update_permission):
@@ -146,8 +161,9 @@ class AdminService:
         is_admin = current_user_role == "admin"
         is_self = current_user_id == user_id
 
-        has_promote_permission = current_user_perms.get("admin.users.promote", False)
-        has_restore_permission = current_user_perms.get("admin.users.restore", False)
+        has_promote_permission = current_user_perms.get("admin.users.promote", False) or current_user_perms.get("user.promote", False)
+        has_restore_permission = current_user_perms.get("admin.users.restore", False) or current_user_perms.get("user.restore", False)
+        has_disable_permission = current_user_perms.get("admin.users.disable", False) or current_user_perms.get("user.disable", False)
         has_self_disable = current_user_perms.get("user.disable.self", False)
 
         # <- FIX 1: Admins must NEVER disable themselves.
@@ -160,7 +176,7 @@ class AdminService:
                 "Admins cannot disable their own account. Ask another admin to do it."
             )
 
-        can_disable_any = is_admin or has_promote_permission or has_restore_permission
+        can_disable_any = is_admin or has_promote_permission or has_restore_permission or has_disable_permission
 
         # -- Path 1: disable someone else --------------------------------------------------------
         if not is_self:
@@ -224,8 +240,8 @@ class AdminService:
         is_admin = cur_role == "admin"
         is_self = cur_id == user_id
 
-        has_admin_enable = cur_perms.get("admin.user.enable", False)
-        has_admin_promote = cur_perms.get("admin.users.promote", False)
+        has_admin_enable = cur_perms.get("admin.user.enable", False) or cur_perms.get("user.enable", False)
+        has_admin_promote = cur_perms.get("admin.users.promote", False) or cur_perms.get("user.promote", False)
         has_self_enable = cur_perms.get("user.self.enable", False)
 
         can_enable_any = is_admin or has_admin_enable or has_admin_promote
@@ -310,8 +326,20 @@ class AdminService:
     async def temp_token_maker(self, user_id: int, current_user: Dict[str, Any], db, cookie_login: bool, restore_passwd: bool, otp: str = None):
         repo = UserRepository(self.db)
 
-        if current_user.get("role") != "admin":
-            raise PermissionDeniedError("Only admin can access this")
+        cur_role = current_user.get("role")
+        cur_perms = self._normalize_permissions(current_user.get("permissions", {}))
+        is_admin = cur_role == "admin"
+        can_make_token = (
+            is_admin
+            or cur_perms.get("admin.users.promote", False)
+            or cur_perms.get("admin.users.restore", False)
+            or cur_perms.get("admin.users.disable", False)
+            or cur_perms.get("user.promote", False)
+            or cur_perms.get("user.restore", False)
+            or cur_perms.get("user.disable", False)
+        )
+        if not can_make_token:
+            raise PermissionDeniedError("You don't have permission to create temporary tokens")
 
         cur_id = current_user.get("id")
         actor = await repo.get_by_id(cur_id)
@@ -406,26 +434,14 @@ class AdminService:
 
         has_admin_delete = cur_perms.get("admin.users.delete", False)
         has_admin_promote = cur_perms.get("admin.users.promote", False)
+        has_delete_any = cur_perms.get("user.delete.any", False)
+        has_delete_self = cur_perms.get("user.delete.self", False)
 
-        can_delete_any = is_admin or has_admin_delete or has_admin_promote
-
-        if can_delete_any:
-            target_user = await repo.get_by_id(user_id)
-            if not target_user:
-                raise UserNotFoundError(f"User {user_id} not found")
-            if target_user.is_deleted:
-                raise ValidationError("User is already deleted")
-            if is_self_deletion:
-                raise PermissionDeniedError("You cannot delete your own account")
-            success = await repo.delete_account(user_id)
-            if not success:
-                raise DomainError("Failed to delete user account")
-            return {
-                "status": "success",
-                "message": f"User {user_id} deleted by {current_user.get('email')}",
-            }
+        can_delete_any = is_admin or has_admin_delete or has_admin_promote or has_delete_any
 
         if is_self_deletion:
+            if not (is_admin or has_delete_self):
+                raise PermissionDeniedError("You don't have permission to delete your own account")
             target_user = await repo.get_by_id(user_id)
             if not target_user:
                 raise UserNotFoundError(f"User {user_id} not found")
@@ -441,6 +457,20 @@ class AdminService:
             return {
                 "status": "success",
                 "message": "Your account has been soft deleted",
+            }
+
+        if can_delete_any:
+            target_user = await repo.get_by_id(user_id)
+            if not target_user:
+                raise UserNotFoundError(f"User {user_id} not found")
+            if target_user.is_deleted:
+                raise ValidationError("User is already deleted")
+            success = await repo.delete_account(user_id)
+            if not success:
+                raise DomainError("Failed to delete user account")
+            return {
+                "status": "success",
+                "message": f"User {user_id} deleted by {current_user.get('email')}",
             }
 
         raise PermissionDeniedError("You don't have permission to delete this account")
@@ -464,8 +494,8 @@ class AdminService:
                     logger.warning(f"Step-up MFA failed: actor={cur_id} action=restore_account")
                     raise InvalidMFACodeError()
 
-        has_restore_permission = cur_perms.get("admin.users.restore", False)
-        has_promote_permission = cur_perms.get("admin.users.promote", False)
+        has_restore_permission = cur_perms.get("admin.users.restore", False) or cur_perms.get("user.restore", False)
+        has_promote_permission = cur_perms.get("admin.users.promote", False) or cur_perms.get("user.promote", False)
         can_restore_any = is_admin or has_restore_permission or has_promote_permission or is_slt_token
 
         if is_slt_token:

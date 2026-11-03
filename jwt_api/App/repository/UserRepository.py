@@ -1,7 +1,7 @@
 # App/repository/UserRepository.py
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, or_, func
 from typing import Optional, List, Dict, Any, Tuple
 import logging
 from datetime import datetime, timezone
@@ -235,29 +235,72 @@ class UserRepository:
         self,
         skip: int = 0,
         limit: int = 100,
-        active_only: bool = True,
+        active_only: bool = False,
+        show_disabled: bool = True,
+        show_deleted: bool = False,
         search: Optional[str] = None,
     ) -> List[UserModel]:
         query = select(UserModel)
+        conditions = []
         if active_only:
-            query = query.where(
-                and_(UserModel.is_active == True, UserModel.disabled == False)
+            conditions.append(
+                and_(
+                    UserModel.is_active == True,
+                    or_(UserModel.disabled == False, UserModel.disabled.is_(None)),
+                    or_(UserModel.is_deleted == False, UserModel.is_deleted.is_(None)),
+                )
             )
+        else:
+            if not show_deleted:
+                conditions.append(or_(UserModel.is_deleted == False, UserModel.is_deleted.is_(None)))
+            if not show_disabled:
+                conditions.append(or_(UserModel.disabled == False, UserModel.disabled.is_(None)))
+
         if search:
             search_filter = UserModel.name.ilike(f"%{search}%")
             if "@" in search:
                 search_filter = search_filter | UserModel.email.ilike(f"%{search}%")
-            query = query.where(search_filter)
+            conditions.append(search_filter)
+
+        if conditions:
+            query = query.where(and_(*conditions))
+
         query = query.offset(skip).limit(limit).order_by(UserModel.created_at.desc())
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def count_users(self, active_only: bool = True) -> int:
+    async def count_users(
+        self,
+        active_only: bool = False,
+        show_disabled: bool = True,
+        show_deleted: bool = False,
+        search: Optional[str] = None,
+    ) -> int:
         query = select(func.count()).select_from(UserModel)
+        conditions = []
         if active_only:
-            query = query.where(
-                and_(UserModel.is_active == True, UserModel.disabled == False)
+            conditions.append(
+                and_(
+                    UserModel.is_active == True,
+                    or_(UserModel.disabled == False, UserModel.disabled.is_(None)),
+                    or_(UserModel.is_deleted == False, UserModel.is_deleted.is_(None)),
+                )
             )
+        else:
+            if not show_deleted:
+                conditions.append(or_(UserModel.is_deleted == False, UserModel.is_deleted.is_(None)))
+            if not show_disabled:
+                conditions.append(or_(UserModel.disabled == False, UserModel.disabled.is_(None)))
+
+        if search:
+            search_filter = UserModel.name.ilike(f"%{search}%")
+            if "@" in search:
+                search_filter = search_filter | UserModel.email.ilike(f"%{search}%")
+            conditions.append(search_filter)
+
+        if conditions:
+            query = query.where(and_(*conditions))
+
         result = await self.session.execute(query)
         return result.scalar() or 0
 

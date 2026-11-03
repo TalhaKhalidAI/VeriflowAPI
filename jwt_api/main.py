@@ -398,15 +398,20 @@ app.add_middleware(
 )
 app.add_middleware(KillSwitchMiddleware, recovery_seconds=60)
 app.add_middleware(IdempotencyMiddleware)
-ALLOWED_ORIGINS = [
-    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()
-]
+ALLOWED_ORIGINS = settings.allowed_origins_list
 app.add_middleware(                                                      # outermost
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=[
+        "X-Request-ID",
+        "X-MFA-Required",
+        "X-MFA-Method",
+        "X-MFA-Email",
+        "Retry-After",
+    ],
 )
 
 

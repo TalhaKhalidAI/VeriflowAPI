@@ -1,0 +1,462 @@
+# App/api/v1/Shifts.py
+"""
+Shift Management API Endpoints (Worker Floor Session & Scanner Authorization).
+
+Permissions & Authorization Rules:
+    - Normal User:
+        * Can start a shift for THEMSELVES (receives scoped shift_token JWT).
+        * Can checkout of their OWN active shift.
+        * Can view their active shift and shift history.
+        * CANNOT update, delete, or modify arbitrary shift records.
+        * CANNOT start shifts for other users (403 Forbidden).
+        * CANNOT revoke shifts (403 Forbidden).
+    - Normal User with permissions:
+        * SHIFTS_VIEW: Can view other users' shifts.
+        * SHIFTS_REVOKE: Can administratively revoke active shifts.
+    - Admin (role == "admin"):
+        * Can do anything on ANY account (start, checkout, revoke, view, expire-old).
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Dict, Any, Optional
+
+from App.core.qr_utils import generate_qr_png_bytes
+from App.core.RedisConnector import redis_client
+
+from App.core.Connector import get_db
+from App.core.LoggingInit import get_core_logger
+from App.core.exceptions import (
+    ShiftNotFoundError,
+    ActiveShiftExistsError,
+    InvalidShiftStateError,
+    CryptoKeyNotFoundError,
+    UserNotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
+from App.models.Permissions import Permission
+from App.api.dependencies.auth import get_current_user
+from App.api.dependencies.permissions import require_permission
+from App.services.shift_service import ShiftService
+from App.schemas.ShiftSchema import (
+    StartShiftRequest,
+    RevokeShiftRequest,
+    ShiftResponse,
+    StartShiftResponse,
+    ShiftListResponse,
+    ExpireShiftsResponse,
+    DeleteShiftResponse,
+)
+
+logger = get_core_logger(__name__)
+shifts_router = APIRouter(prefix="/shifts", tags=["Shifts & Sessions"])
+
+
+# ============================================================================
+# READ ENDPOINTS
+# ============================================================================
+@shifts_router.get(
+    "/active/me",
+    response_model=Optional[ShiftResponse],
+    summary="Get current user's active shift",
+    description="Worker self-service endpoint to check if they currently have an open active shift.",
+)
+async def get_my_active_shift(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    return await service.get_my_active_shift(current_user=current_user)
+
+
+@shifts_router.get(
+    "/",
+    response_model=ShiftListResponse,
+    summary="List shifts",
+    description=(
+        "Retrieve shifts. "
+        "Normal users receive their OWN shift history. "
+        "Admins or users with SHIFTS_VIEW can list shifts across all users (active and inactive) or filter by user_id. "
+        "Use active_only=true to view only active shifts, or active_only=false to view all shifts."
+    ),
+)
+async def list_shifts(
+    user_id: Optional[int] = Query(None, description="Filter by user ID (Admin/Supervisor only). If omitted, lists shifts across all users."),
+    active_only: bool = Query(False, description="Filter active shifts only (true) or all active/inactive shifts (false)"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    return await service.list_shifts(
+        current_user=current_user,
+        target_user_id=user_id,
+        active_only=active_only,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@shifts_router.get(
+    "/{shift_id}",
+    response_model=ShiftResponse,
+    summary="Get shift by ID",
+    description="Fetch a specific shift. Normal users can only view shifts they own; admins any.",
+)
+async def get_shift_by_id(
+    shift_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    try:
+        return await service.get_shift_by_id(shift_id=shift_id, current_user=current_user)
+    except ShiftNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+# ============================================================================
+# LIFECYCLE: START & CHECKOUT
+# ============================================================================
+@shifts_router.post(
+    "/start",
+    response_model=StartShiftResponse,
+    responses={
+        201: {
+            "content": {
+                "application/json": {},
+                "image/png": {},
+            },
+            "description": "Returns raw JSON data by default, or QR code PNG image if qr_only is true.",
+        }
+    },
+    status_code=status.HTTP_201_CREATED,
+    summary="Start a new work shift",
+    description=(
+        "Initiates a work shift and returns a scoped shift_token JWT for mobile scanner authorization. "
+        "Normal workers can start shifts for THEMSELVES. "
+        "Admins can specify target_user_id to start a shift on behalf of any worker. "
+        "Supports custom duration via duration_value and duration_unit (seconds, minutes, hours, days, weeks, months, years). "
+        "Set qr_only=true to view the scannable QR code image directly."
+    ),
+)
+async def start_shift(
+    payload: StartShiftRequest,
+    qr_only: bool = Query(
+        False,
+        description="Checkbox: if checked (true), returns the QR code image (PNG) of the shift token directly to scan on screen. If false (unchecked), returns raw JSON data.",
+    ),
+    include_rules: Optional[bool] = Query(
+        None,
+        description="Checkbox: if true (checked), embeds active inventory rules into the shift token. If false (unchecked), token is minted without rules.",
+    ),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    should_include_rules = include_rules if include_rules is not None else payload.include_rules
+    try:
+        result = await service.start_shift(
+            current_user=current_user,
+            target_user_id=payload.target_user_id,
+            key_id=payload.key_id,
+            duration_hours=payload.duration_hours,
+            duration_value=payload.duration_value,
+            duration_unit=payload.duration_unit,
+            device_id=payload.device_id,
+            include_rules=should_include_rules,
+        )
+        if qr_only:
+            try:
+                png_bytes = generate_qr_png_bytes(result["shift_token"])
+            except Exception as e:
+                try:
+                    c = await redis_client.ensure_connected()
+                    await c.delete(f"shift:active:user:{result['shift']['user_id']}")
+                except Exception:
+                    pass
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Shift token too large for QR rendering ({e}). Uncheck 'Embed Rules' or use JSON mode.",
+                )
+            return Response(
+                content=png_bytes,
+                media_type="image/png",
+                headers={
+                    "Content-Disposition": f'inline; filename="shift_{result["shift"]["id"]}_qr.png"'
+                },
+            )
+        return result
+    except ActiveShiftExistsError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except UserNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except CryptoKeyNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@shifts_router.post(
+    "/active/reissue",
+    response_model=StartShiftResponse,
+    responses={
+        200: {
+            "content": {
+                "application/json": {},
+                "image/png": {},
+            },
+            "description": "Returns raw JSON data by default, or QR code PNG image if qr_only is true.",
+        }
+    },
+    status_code=status.HTTP_200_OK,
+    summary="Reissue token for active shift (if lost)",
+    description=(
+        "Re-mints and returns a scoped shift_token JWT for a user's currently active shift. "
+        "Normal workers can reissue their own active shift token if lost or misplaced. "
+        "Admins can specify target_user_id to reissue on behalf of any worker. "
+        "Set qr_only=true to view the scannable QR code image directly."
+    ),
+)
+async def reissue_active_shift_token(
+    target_user_id: Optional[int] = Query(
+        None, description="Target user ID (Admin only). Omit to reissue your own active shift token."
+    ),
+    qr_only: bool = Query(
+        False,
+        description="Checkbox: if checked (true), returns the QR code image (PNG) of the shift token directly to scan on screen. If false (unchecked), returns raw JSON data.",
+    ),
+    include_rules: bool = Query(
+        True,
+        description="Checkbox: if checked (true), embeds active inventory rules into the reissued shift token. If false (unchecked), omits rules for a lighter token.",
+    ),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    try:
+        result = await service.reissue_active_shift_token(
+            current_user=current_user,
+            target_user_id=target_user_id,
+            include_rules=include_rules,
+        )
+        if qr_only:
+            png_bytes = generate_qr_png_bytes(result["shift_token"])
+            return Response(
+                content=png_bytes,
+                media_type="image/png",
+                headers={
+                    "Content-Disposition": f'inline; filename="shift_{result["shift"]["id"]}_qr.png"'
+                },
+            )
+        return result
+    except ShiftNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except UserNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except CryptoKeyNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except InvalidShiftStateError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@shifts_router.post(
+    "/{shift_id}/reissue",
+    response_model=StartShiftResponse,
+    responses={
+        200: {
+            "content": {
+                "application/json": {},
+                "image/png": {},
+            },
+            "description": "Returns raw JSON data by default, or QR code PNG image if qr_only is true.",
+        }
+    },
+    status_code=status.HTTP_200_OK,
+    summary="Reissue token for specific shift ID (if active)",
+    description="Re-mints a shift_token JWT for a specific shift ID if it is currently active. Set qr_only=true to view the scannable QR code image directly.",
+)
+async def reissue_shift_by_id(
+    shift_id: str,
+    qr_only: bool = Query(
+        False,
+        description="Checkbox: if checked (true), returns the QR code image (PNG) of the shift token directly to scan on screen. If false (unchecked), returns raw JSON data.",
+    ),
+    include_rules: bool = Query(
+        True,
+        description="Checkbox: if checked (true), embeds active inventory rules into the reissued shift token. If false (unchecked), omits rules for a lighter token.",
+    ),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    try:
+        result = await service.reissue_shift_by_id(
+            shift_id=shift_id,
+            current_user=current_user,
+            include_rules=include_rules,
+        )
+        if qr_only:
+            png_bytes = generate_qr_png_bytes(result["shift_token"])
+            return Response(
+                content=png_bytes,
+                media_type="image/png",
+                headers={
+                    "Content-Disposition": f'inline; filename="shift_{shift_id}_qr.png"'
+                },
+            )
+        return result
+    except ShiftNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except UserNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except CryptoKeyNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except InvalidShiftStateError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@shifts_router.post(
+    "/checkout",
+    response_model=ShiftResponse,
+    summary="Checkout of current active shift (Self-Service)",
+    description="Worker self-service endpoint to complete their currently active shift at the end of the workday.",
+)
+async def checkout_my_shift(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    active_shift = await service.get_my_active_shift(current_user=current_user)
+    if not active_shift:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="You do not have any currently active shift to checkout from",
+        )
+
+    try:
+        return await service.checkout_shift(
+            shift_id=active_shift["id"],
+            current_user=current_user,
+        )
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except InvalidShiftStateError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@shifts_router.post(
+    "/{shift_id}/checkout",
+    response_model=ShiftResponse,
+    summary="Checkout of a specific shift",
+    description="Complete a shift by ID. Workers can checkout their own shift; admins can checkout any worker's shift.",
+)
+async def checkout_shift_by_id(
+    shift_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    try:
+        return await service.checkout_shift(
+            shift_id=shift_id,
+            current_user=current_user,
+        )
+    except ShiftNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except InvalidShiftStateError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# ============================================================================
+# ADMINISTRATIVE: REVOKE & EXPIRY MAINTENANCE
+# ============================================================================
+@shifts_router.post(
+    "/{shift_id}/revoke",
+    response_model=ShiftResponse,
+    summary="Forcefully revoke an active shift (Admin / Supervisor)",
+    description="Terminates an active shift and blacklists the shift_token in Redis. Requires SHIFTS_REVOKE or Admin.",
+)
+async def revoke_shift(
+    shift_id: str,
+    payload: RevokeShiftRequest,
+    current_user: Dict[str, Any] = Depends(
+        require_permission([Permission.SHIFTS_REVOKE], mode="any", bypass_admin=True)
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    try:
+        return await service.revoke_shift(
+            shift_id=shift_id,
+            reason=payload.reason,
+            current_user=current_user,
+        )
+    except ShiftNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except InvalidShiftStateError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@shifts_router.delete(
+    "/{shift_id}",
+    response_model=DeleteShiftResponse,
+    summary="Permanently delete a shift",
+    description=(
+        "Deletes a shift and its scan history. "
+        "Admin / 'shifts.delete.any': any shift by valid id. "
+        "'shifts.delete': only shifts that are your own AND that you started yourself "
+        "(not shifts an admin or supervisor started for you). "
+        "Active shifts are invalidated in Redis so their shift_token stops working immediately."
+    ),
+)
+async def delete_shift(
+    shift_id: str,
+    current_user: Dict[str, Any] = Depends(
+        require_permission(
+            [Permission.SHIFTS_DELETE, Permission.SHIFTS_DELETE_ANY], mode="any", bypass_admin=True
+        )
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    try:
+        return await service.delete_shift(shift_id=shift_id, current_user=current_user)
+    except ShiftNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@shifts_router.post(
+    "/expire-old",
+    response_model=ExpireShiftsResponse,
+    summary="Trigger bulk expiry of expired shifts (Admin Only)",
+    description="Bulk expires active shifts past their expiration timestamp.",
+)
+async def expire_old_shifts(
+    current_user: Dict[str, Any] = Depends(
+        require_permission([Permission.ADMIN_ACCESS], mode="any", bypass_admin=True)
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ShiftService(db)
+    return await service.expire_old_shifts(current_user=current_user)

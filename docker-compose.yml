@@ -1,0 +1,55 @@
+services:
+  veriflow-api:
+    build:
+      context: ./jwt_api
+      dockerfile: Dockerfile
+    container_name: veriflow-api
+    restart: unless-stopped
+    env_file:
+      - ./jwt_api/.env
+    environment:
+      - DATABASE_HOST=${DATABASE_HOST:-10.0.0.2}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - PORT=8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./jwt_api:/app
+      - ./jwt_api/logs:/app/logs
+    dns:
+      - 192.168.100.33
+      - 8.8.8.8
+    networks:
+      a-class-bridge:
+        ipv4_address: 10.0.0.10
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  veriflow-web:
+    build:
+      context: ./Frontend/veriflow
+      dockerfile: Dockerfile
+    container_name: veriflow-web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    volumes:
+      - ./Frontend/veriflow:/app
+      - ./Frontend/veriflow/dist:/usr/share/nginx/html
+    dns:
+      - 192.168.100.33
+      - 8.8.8.8
+    networks:
+      a-class-bridge:
+        ipv4_address: 10.0.0.11
+    depends_on:
+      - veriflow-api
+
+networks:
+  a-class-bridge:
+    external: true
+    name: a-class-bridge
+

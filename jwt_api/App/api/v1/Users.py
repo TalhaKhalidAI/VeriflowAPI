@@ -27,6 +27,8 @@ from App.api.dependencies.auth import (
     cookie_scheme,
     oauth2_scheme,
 )
+from App.models.Permissions import Permission
+from App.api.dependencies.permissions import require_permission
 
 user_router = APIRouter(prefix="/users_config", tags=["Users"])
 logger = get_core_logger(__name__)
@@ -174,19 +176,45 @@ async def list_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     search: Optional[str] = None,
-    current_user: Dict[str, Any] = Depends(get_admin_user),
+    show_disabled: bool = Query(True, description="Show/include disabled user accounts"),
+    show_deleted: bool = Query(False, description="Show/include deleted user accounts"),
+    show_permissions: bool = Query(True, description="Show user permissions in response"),
+    current_user: Dict[str, Any] = Depends(
+        require_permission(
+            [
+                Permission.ADMIN_ACCESS,
+                Permission.ADMIN_USERS_VIEW,
+                Permission.ADMIN_USERS,
+                Permission.USER_VIEW_ANY,
+                Permission.KEYS_VIEW,
+                Permission.KEYS_CREATE,
+                Permission.SHIFTS_VIEW,
+                Permission.SHIFTS_VIEW_ANY,
+                Permission.SHIFTS_VIEW_ALL,
+                Permission.SHIFTS_CREATE,
+                Permission.INVENTORY_RULES_VIEW,
+                Permission.INVENTORY_RULES_CREATE,
+                Permission.TAGS_CREATE,
+            ],
+            mode="any",
+            bypass_admin=True,
+            additional_dependency=get_current_active_user,
+        )
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """List users (admin only)."""
     try:
-        data = await UserService(db).list_users(skip=skip, limit=limit, search=search)
+        data = await UserService(db).list_users(
+            skip=skip,
+            limit=limit,
+            search=search,
+            show_disabled=show_disabled,
+            show_deleted=show_deleted,
+            show_permissions=show_permissions,
+        )
 
-        return {
-            "users": [UserResponse.model_validate(user) for user in data["users"]],
-            "total": data["total"],
-            "skip": data["skip"],
-            "limit": data["limit"],
-        }
+        return data
 
     except HTTPException:
         raise

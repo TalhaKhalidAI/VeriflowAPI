@@ -16,6 +16,7 @@ class Permission(str, Enum):
     USER_DELETE_SELF = "user.delete.self"
     USER_HISTORY_VIEW = "user.history.view"
     USER_HISTORY_DELETE = "user.history.delete"
+    USER_DELETE_ALL_DATA = "user.delete_all_data"  # Android app permission to wipe all local SQLite data
     USER_SELF_ENABLE = "user.self.enable"
     USER_SELF_DISABLE = "user.disable.self"
 
@@ -48,12 +49,19 @@ class Permission(str, Enum):
     KEYS_CREATE = "keys.create"
     KEYS_UPDATE = "keys.update"
     KEYS_REVOKE = "keys.revoke"
+    KEYS_DELETE = "keys.delete"            # delete keys the user personally generated
+    KEYS_DELETE_ANY = "keys.delete.any"    # delete ANY key (admin-grade)
 
     # ===== VERIFLOW: SHIFT MANAGEMENT =====
     SHIFTS_VIEW = "shifts.view"
+    SHIFTS_VIEW_ANY = "shifts.view.any"
+    SHIFTS_VIEW_ALL = "shifts.view.all"
+    SHIFTS_VIEW_OWN = "shifts.view.own"
     SHIFTS_CREATE = "shifts.create"
     SHIFTS_REVOKE = "shifts.revoke"
     SHIFTS_CHECKOUT = "shifts.checkout"
+    SHIFTS_DELETE = "shifts.delete"            # delete own shifts the user started themselves
+    SHIFTS_DELETE_ANY = "shifts.delete.any"    # delete ANY shift by id (admin-grade)
 
     # ===== VERIFLOW: INVENTORY RULES =====
     INVENTORY_RULES_VIEW = "inventory_rules.view"
@@ -64,4 +72,9 @@ class Permission(str, Enum):
     # ===== VERIFLOW: SCAN LOGS =====
     SCANS_VIEW_ANY = "scans.view.any"
     SCANS_VIEW_OWN = "scans.view.own"
+    SCANS_CREATE = "scans.create"
+    SCANS_UPDATE = "scans.update"
     SCANS_DELETE = "scans.delete"
+
+    # ===== VERIFLOW: PRODUCT QR TAGS =====
+    TAGS_CREATE = "tags.create"

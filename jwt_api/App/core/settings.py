@@ -39,6 +39,10 @@ class Settings(BaseSettings):
         default=True,
         description="Whether to enforce HTTPS-only connections"
     )
+    ALLOWED_ORIGINS: str = Field(
+        default="",
+        description="Comma-separated list of allowed CORS origins loaded from .env"
+    )
  
     ADMIN_EMAIL:str=Field(...)
     ADMIN_USERNAME:str=Field(...)
@@ -379,6 +383,16 @@ class Settings(BaseSettings):
         return url
     
     # Computed properties
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        """Parse ALLOWED_ORIGINS from .env into a clean deduplicated list of origins."""
+        origins: list[str] = []
+        for raw in (self.ALLOWED_ORIGINS or "").split(","):
+            cleaned = raw.strip().rstrip("/")
+            if cleaned and cleaned not in origins:
+                origins.append(cleaned)
+        return origins
+
     @property
     def secret_key_str(self) -> str:
         """Get the secret key as string (use carefully)"""

@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+:root {
+  --color-black-hud: #07111D;
+  --color-panel-hud: #0F172A;
+  --color-panel-alt: #111C2E;
+  --color-border-hud: #1E293B;
+  --color-amber-accent: #F59E0B;
+  --color-yellow-caution: #FACC15;
+  --color-cyber-blue: #38BDF8;
+  --color-pass-green: #10B981;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #07111D;
+  color: #F8FAFC;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Industrial Grid & Scanline Background */
+.bg-industrial-grid {
+  background-color: #07111D;
+  background-image: radial-gradient(rgba(30, 41, 59, 0.4) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+/* Industrial HUD Panel */
+.panel-industrial {
+  background-color: #0F172A;
+  border: 1px solid #1E293B;
+  border-radius: 0.75rem;
+}
+
+.panel-industrial-yellow {
+  background-color: #0F172A;
+  border: 2px solid #FACC15;
+  border-radius: 0.75rem;
+}
+
+/* Monospace Telemetry */
+.font-telemetry {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing: 0.05em;
+}
+
+/* Custom DaisyUI overrides if needed */
+.btm-nav-industrial {
+  background-color: #0F172A;
+  border-top: 1px solid #1E293B;
+}
+
+/* Scrollbar polish */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #07111D;
+}
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}

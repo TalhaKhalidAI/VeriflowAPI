@@ -1,0 +1,689 @@
+# App/services/shift_service.py
+
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta, timezone
+import uuid
+import json
+import jwt
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from App.services.base import BaseService
+from App.repository.ShiftRepository import ShiftRepository
+from App.repository.CryptoKeyRepository import CryptoKeyRepository
+from App.repository.UserRepository import UserRepository
+from App.repository.InventoryRuleRepository import InventoryRuleRepository
+from App.core.settings import settings
+from App.core.aes_crypto import decrypt_data
+from App.core.RedisConnector import redis_client
+from App.core.redis_keys import revoked_shift_key
+from App.core.exceptions import (
+    ShiftNotFoundError,
+    ActiveShiftExistsError,
+    InvalidShiftStateError,
+    CryptoKeyNotFoundError,
+    UserNotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
+from App.models.Permissions import Permission
+from App.core.LoggingInit import get_core_logger
+
+logger = get_core_logger(__name__)
+
+
+class ShiftService(BaseService):
+    """
+    Application business logic for Shift (Session & Worker Floor Management) operations.
+
+    Authorization Rules:
+        - Admin (role == "admin"): Can start, checkout, revoke, and inspect shifts on ANY account.
+        - Normal User (Default):
+            * Can start a shift for THEMSELVES.
+            * Can checkout of their OWN active shift.
+            * Can view their OWN active shift and shift history.
+            * CANNOT modify or delete shifts arbitrarily.
+            * CANNOT revoke shifts (revocation is administrative).
+        - Normal User with SHIFTS_REVOKE: Can administratively revoke active shifts.
+        - Normal User with SHIFTS_VIEW: Can view other users' shifts.
+    """
+
+    def __init__(self, db: AsyncSession):
+        super().__init__(db)
+        self.db = db
+        self.repo = ShiftRepository(db)
+        self.key_repo = CryptoKeyRepository(db)
+        self.user_repo = UserRepository(db)
+        self.rule_repo = InventoryRuleRepository(db)
+
+    # ================================================================
+    # INTERNAL HELPERS
+    # ================================================================
+    @staticmethod
+    def _is_admin(current_user: Dict[str, Any]) -> bool:
+        role = current_user.get("role") or current_user.get("user_role") or ""
+        return str(role).lower() == "admin"
+
+    @staticmethod
+    def _get_user_id(current_user: Dict[str, Any]) -> int:
+        return current_user.get("user_id") or current_user.get("id")
+
+    @staticmethod
+    def _has_permission(current_user: Dict[str, Any], perm: Permission) -> bool:
+        if ShiftService._is_admin(current_user):
+            return True
+        perms = current_user.get("permissions", {})
+        return bool(perms.get(perm.value if isinstance(perm, Permission) else perm, False))
+
+    @classmethod
+    def _can_view_any_shifts(cls, current_user: Dict[str, Any]) -> bool:
+        if cls._is_admin(current_user):
+            return True
+        return (
+            cls._has_permission(current_user, Permission.SHIFTS_VIEW_ANY)
+            or cls._has_permission(current_user, Permission.SHIFTS_VIEW_ALL)
+            or cls._has_permission(current_user, Permission.SHIFTS_DELETE_ANY)
+        )
+
+    @classmethod
+    def _can_manage_any_shift(cls, current_user: Dict[str, Any]) -> bool:
+        if cls._is_admin(current_user):
+            return True
+        return (
+            cls._can_view_any_shifts(current_user)
+            or cls._has_permission(current_user, Permission.SHIFTS_REVOKE)
+        )
+
+    @staticmethod
+    def _to_dict(shift) -> Dict[str, Any]:
+        return {
+            "id": str(shift.id),
+            "user_id": shift.user_id,
+            "key_id": str(shift.key_id),
+            "device_id": shift.device_id,
+            "status": shift.status,
+            "started_at": shift.started_at.isoformat() if shift.started_at else None,
+            "expires_at": shift.expires_at.isoformat() if shift.expires_at else None,
+            "ended_at": shift.ended_at.isoformat() if shift.ended_at else None,
+            "revoked_reason": shift.revoked_reason,
+            "created_by": getattr(shift, "created_by", None),
+        }
+
+    def _generate_shift_token(
+        self, shift, user, crypto_key, rules: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Mint a scoped asymmetric (RS256) shift_token JWT for mobile scanner authorization.
+        Decrypts the private key of the assigned CryptoKey in RAM to sign the token,
+        and embeds user permissions, active inventory rules, shift metadata, and key identifier (kid).
+        """
+        private_pem = decrypt_data(crypto_key.private_key_encrypted)
+        # Compact permissions to only granted (True) permissions to fit comfortably in QR code standards
+        user_perms = {
+            k: True
+            for k, v in (user.permissions or {}).items()
+            if bool(v)
+        }
+        # Mobile app shift operator defaults
+        user_perms.setdefault(Permission.SCANS_VIEW_OWN.value, True)
+        user_perms.setdefault(Permission.SCANS_CREATE.value, True)
+        user_perms.setdefault(Permission.INVENTORY_RULES_VIEW.value, True)
+
+        to_encode = {
+            "sub": user.email,
+            "user_id": user.id,
+            "shift_id": str(shift.id),
+            "key_id": str(shift.key_id),
+            "kid": crypto_key.kid,
+            "role": user.user_role,
+            "permissions": user_perms,
+            "type": "shift_token",
+            "exp": shift.expires_at,
+            "iat": datetime.now(timezone.utc),
+            "jti": str(uuid.uuid4()),
+        }
+        if rules is not None and len(rules) > 0:
+            to_encode["rules"] = rules
+        return jwt.encode(
+            to_encode,
+            private_pem,
+            algorithm="RS256",
+            headers={"kid": crypto_key.kid, "alg": "RS256", "typ": "JWT"},
+        )
+
+    # ================================================================
+    # SHIFT LIFECYCLE: START SHIFT
+    # ================================================================
+    @staticmethod
+    def _resolve_duration_seconds(
+        duration_hours: Optional[int] = 8,
+        duration_value: Optional[int] = None,
+        duration_unit: Optional[Any] = "hours",
+    ) -> int:
+        """Convert custom shift duration (value + unit or legacy duration_hours) into total seconds."""
+        raw_val = duration_value if duration_value is not None else (duration_hours if duration_hours is not None else 8)
+        try:
+            val = int(raw_val)
+        except (TypeError, ValueError):
+            raise ValidationError("Shift duration value must be a valid integer")
+
+        if val < 1:
+            raise ValidationError("Shift duration value must be at least 1")
+
+        unit_str = (
+            duration_unit.value
+            if hasattr(duration_unit, "value")
+            else str(duration_unit or "hours")
+        ).lower().strip()
+
+        if unit_str in ("sec", "secs", "second", "seconds", "s"):
+            return val
+        if unit_str in ("min", "mins", "minute", "minutes", "m"):
+            return val * 60
+        if unit_str in ("hr", "hrs", "hour", "hours", "h"):
+            return val * 3600
+        if unit_str in ("day", "days", "d"):
+            return val * 86400
+        if unit_str in ("week", "weeks", "w"):
+            return val * 7 * 86400
+        if unit_str in ("month", "months", "mo"):
+            return val * 30 * 86400
+        if unit_str in ("year", "years", "yr", "yrs", "y"):
+            return val * 365 * 86400
+
+        raise ValidationError(
+            f"Invalid duration unit '{duration_unit}'. Supported: seconds, minutes, hours, days, weeks, months, years"
+        )
+
+    async def start_shift(
+        self,
+        current_user: Dict[str, Any],
+        target_user_id: Optional[int] = None,
+        key_id: Optional[str | uuid.UUID] = None,
+        duration_hours: Optional[int] = 8,
+        duration_value: Optional[int] = None,
+        duration_unit: Optional[Any] = "hours",
+        device_id: Optional[str] = None,
+        include_rules: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Start an active work shift.
+        - Admin can start a shift for ANY user (target_user_id).
+        - Normal user can only start a shift for THEMSELVES.
+        - Automatically resolves active signing key if key_id is omitted.
+        - Signs scoped RS256 shift_token JWT using the decrypted private key.
+        - Embeds target user's active permissions into the token claims.
+        - Embeds applicable inventory rules (matching_claim_key: expected_value) into the token claims.
+        - Returns shift details + scoped shift_token JWT for scanner verification.
+        """
+        auth_user_id = self._get_user_id(current_user)
+
+        # Enforce permission: user must be admin or have shifts.create
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CREATE):
+            raise PermissionDeniedError("Permission 'shifts.create' is required to start a work shift")
+
+        # Enforce user assignment rule
+        if target_user_id is not None and target_user_id != auth_user_id:
+            if not self._can_manage_any_shift(current_user):
+                raise PermissionDeniedError("Only administrators or supervisors can initiate shifts for other workers")
+            assigned_user_id = target_user_id
+        else:
+            assigned_user_id = auth_user_id
+
+        # Validate worker exists
+        user = await self.user_repo.get_by_id(assigned_user_id)
+        if not user or user.is_deleted:
+            raise UserNotFoundError(f"User {assigned_user_id} not found or inactive")
+
+        # Resolve Cryptographic Signing Key
+        if key_id:
+            crypto_key = await self.key_repo.get_by_id(key_id)
+            if not crypto_key or crypto_key.status != "active":
+                raise CryptoKeyNotFoundError(f"Cryptographic key {key_id} is not valid or active")
+            assigned_key_id = crypto_key.id
+        else:
+            crypto_key = await self.key_repo.get_latest_active_key()
+            if not crypto_key:
+                raise CryptoKeyNotFoundError("No active cryptographic key available to assign to this shift")
+            assigned_key_id = crypto_key.id
+
+        exp_seconds = self._resolve_duration_seconds(
+            duration_hours=duration_hours,
+            duration_value=duration_value,
+            duration_unit=duration_unit,
+        )
+
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(seconds=exp_seconds)
+
+        # Fetch applicable inventory rules for this key
+        applicable_rules = await self.rule_repo.get_applicable_rules(key_id=assigned_key_id)
+        rules_list = [
+            {
+                "rule_name": r.rule_name,
+                "matching_claim_key": r.matching_claim_key,
+                "expected_value": r.expected_value,
+            }
+            for r in applicable_rules
+        ]
+        rules_dict = {r.matching_claim_key: r.expected_value for r in applicable_rules}
+
+        # Atomic Redis lock to prevent race-condition double shift starts
+        redis_shift_lock = f"shift:active:user:{assigned_user_id}"
+        redis_ttl = max(1, exp_seconds)
+        c = await redis_client.ensure_connected()
+        acquired = await c.set(redis_shift_lock, "active", nx=True, ex=redis_ttl)
+        if not acquired:
+            # Verify against database: if DB has no active shift, the Redis lock was orphaned
+            existing_active = await self.repo.get_active_shift_by_user(assigned_user_id)
+            if existing_active:
+                raise ActiveShiftExistsError(f"User {assigned_user_id} already has an active shift")
+            # Overwrite stale orphaned Redis lock
+            await c.set(redis_shift_lock, "active", ex=redis_ttl)
+
+        try:
+            shift = await self.repo.create_shift(
+                user_id=assigned_user_id,
+                key_id=assigned_key_id,
+                expires_at=expires_at,
+                device_id=device_id,
+                created_by=auth_user_id,
+            )
+        except Exception:
+            await c.delete(redis_shift_lock)
+            raise
+
+        if include_rules:
+            # Embed compact rules to ensure JWT fits standard QR camera resolution
+            embedded_rules = rules_dict if (len(rules_list) > 3 or len(json.dumps(rules_list)) > 600) else (rules_list if rules_list else rules_dict)
+        else:
+            embedded_rules = None
+
+        shift_token = self._generate_shift_token(
+            shift, user, crypto_key, rules=embedded_rules
+        )
+
+        logger.info(
+            f"Started shift {shift.id} for user {assigned_user_id} with {len(rules_dict)} rules on device {device_id}"
+        )
+        return {
+            "shift": self._to_dict(shift),
+            "shift_token": shift_token,
+            "expires_at": expires_at.isoformat(),
+            "expires_in_seconds": exp_seconds,
+        }
+
+    # ================================================================
+    # SHIFT LIFECYCLE: REISSUE TOKEN (FOR LOST TOKENS)
+    # ================================================================
+    async def reissue_active_shift_token(
+        self,
+        current_user: Dict[str, Any],
+        target_user_id: Optional[int] = None,
+        include_rules: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Reissue/remint a lost shift_token JWT for a currently active shift.
+        - Normal worker can re-issue their own active shift token.
+        - Admin can re-issue for any worker (target_user_id).
+        - Preserves existing shift ID, expiration time, and metadata.
+        """
+        auth_user_id = self._get_user_id(current_user)
+
+        # Enforce permission: user must be admin or have shifts.create
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CREATE):
+            raise PermissionDeniedError("Permission 'shifts.create' is required to reissue shift tokens")
+
+        if target_user_id is not None and target_user_id != auth_user_id:
+            if not self._can_manage_any_shift(current_user):
+                raise PermissionDeniedError("Only administrators or supervisors can reissue shift tokens for other workers")
+            assigned_user_id = target_user_id
+        else:
+            assigned_user_id = auth_user_id
+
+        shift = await self.repo.get_active_shift_by_user(assigned_user_id)
+        if not shift:
+            raise ShiftNotFoundError(f"User {assigned_user_id} does not have an active shift to reissue a token for")
+
+        return await self._reissue_token_for_shift(shift, assigned_user_id, include_rules=include_rules)
+
+    async def reissue_shift_by_id(
+        self,
+        shift_id: str | uuid.UUID,
+        current_user: Dict[str, Any],
+        include_rules: bool = True,
+    ) -> Dict[str, Any]:
+        """Reissue token for a specific shift ID if currently active."""
+        shift = await self.repo.get_by_id(shift_id)
+        if not shift:
+            raise ShiftNotFoundError(f"Shift {shift_id} not found")
+
+        auth_user_id = self._get_user_id(current_user)
+
+        # Enforce permission: user must be admin or have shifts.create
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CREATE):
+            raise PermissionDeniedError("Permission 'shifts.create' is required to reissue shift tokens")
+
+        if not self._can_manage_any_shift(current_user) and shift.user_id != auth_user_id:
+            raise PermissionDeniedError("Cannot reissue token for a shift belonging to another user without supervisor privileges")
+
+        if shift.status != "active":
+            raise InvalidShiftStateError(
+                f"Cannot reissue token for shift {shift_id}: shift is '{shift.status}' and no longer active"
+            )
+
+        return await self._reissue_token_for_shift(shift, shift.user_id, include_rules=include_rules)
+
+    async def _reissue_token_for_shift(self, shift, user_id: int, include_rules: bool = True) -> Dict[str, Any]:
+        user = await self.user_repo.get_by_id(user_id)
+        if not user or user.is_deleted:
+            raise UserNotFoundError(f"User {user_id} not found or inactive")
+
+        crypto_key = await self.key_repo.get_by_id(shift.key_id)
+        if not crypto_key or crypto_key.status != "active":
+            crypto_key = await self.key_repo.get_latest_active_key()
+            if not crypto_key:
+                raise CryptoKeyNotFoundError("No active cryptographic key available to sign reissued shift token")
+
+        applicable_rules = await self.rule_repo.get_applicable_rules(key_id=crypto_key.id)
+        rules_list = [
+            {
+                "rule_name": r.rule_name,
+                "matching_claim_key": r.matching_claim_key,
+                "expected_value": r.expected_value,
+            }
+            for r in applicable_rules
+        ]
+        rules_dict = {r.matching_claim_key: r.expected_value for r in applicable_rules}
+
+        if include_rules:
+            # Embed compact rules to ensure JWT fits standard QR camera resolution
+            embedded_rules = rules_dict if (len(rules_list) > 3 or len(json.dumps(rules_list)) > 600) else (rules_list if rules_list else rules_dict)
+        else:
+            embedded_rules = None
+
+        shift_token = self._generate_shift_token(
+            shift, user, crypto_key, rules=embedded_rules
+        )
+
+        logger.info(f"Reissued shift token for user {user_id} on active shift {shift.id} (include_rules={include_rules})")
+        return {
+            "shift": self._to_dict(shift),
+            "shift_token": shift_token,
+            "expires_at": shift.expires_at.isoformat() if shift.expires_at else "",
+        }
+
+    # ================================================================
+    # SHIFT LIFECYCLE: CHECKOUT
+    # ================================================================
+    async def checkout_shift(
+        self,
+        shift_id: str | uuid.UUID,
+        current_user: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Normal checkout (end of workday).
+        - Worker can checkout their own active shift.
+        - Admin can checkout any worker's active shift.
+        """
+        shift = await self.repo.get_by_id(shift_id, for_update=True)
+        if not shift:
+            raise ShiftNotFoundError(f"Shift {shift_id} not found")
+
+        auth_user_id = self._get_user_id(current_user)
+
+        # Enforce permission: user must be admin or have shifts.checkout
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_CHECKOUT):
+            raise PermissionDeniedError("Permission 'shifts.checkout' is required to checkout of a work shift")
+
+        if not self._can_manage_any_shift(current_user) and shift.user_id != auth_user_id:
+            raise PermissionDeniedError("Cannot checkout a shift belonging to another user without supervisor privileges")
+
+        if shift.status != "active":
+            raise InvalidShiftStateError(
+                f"Cannot checkout shift {shift_id}: shift has already ended with status '{shift.status}'"
+            )
+
+        completed_shift = await self.repo.complete_shift(shift_id)
+        # Release atomic Redis lock
+        try:
+            c = await redis_client.ensure_connected()
+            await c.delete(f"shift:active:user:{completed_shift.user_id}")
+        except Exception as e:
+            logger.warning(f"Could not release active shift Redis lock: {e}")
+        logger.info(f"Checked out shift {shift_id} by user {auth_user_id}")
+        return self._to_dict(completed_shift)
+
+    # ================================================================
+    # SHIFT LIFECYCLE: REVOKE (ADMINISTRATIVE ACTION)
+    # ================================================================
+    async def revoke_shift(
+        self,
+        shift_id: str | uuid.UUID,
+        reason: str,
+        current_user: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Forcefully terminate an active shift immediately.
+        - Marks shift status = 'revoked' in database.
+        - Blacklists shift_id in Redis so mobile token verifiers reject it instantly.
+        """
+        if not self._is_admin(current_user) and not self._has_permission(current_user, Permission.SHIFTS_REVOKE):
+            raise PermissionDeniedError("Administrative privileges or SHIFTS_REVOKE permission required")
+
+        if not reason or not reason.strip():
+            raise ValidationError("Revocation reason is required")
+
+        revoked_shift = await self.repo.revoke_shift(shift_id, reason=reason.strip())
+
+        # Release active lock and blacklist in Redis
+        try:
+            c = await redis_client.ensure_connected()
+            await c.delete(f"shift:active:user:{revoked_shift.user_id}")
+            ttl = int((revoked_shift.expires_at - datetime.now(timezone.utc)).total_seconds())
+            if ttl > 0:
+                await c.set(revoked_shift_key(str(revoked_shift.id)), "revoked", ex=ttl)
+        except Exception as e:
+            logger.warning(f"Could not write revoked shift {shift_id} to Redis: {e}")
+
+        logger.warning(
+            f"Revoked shift {shift_id} by user {self._get_user_id(current_user)}. Reason: {reason}"
+        )
+        return self._to_dict(revoked_shift)
+
+    # ================================================================
+    # SHIFT LIFECYCLE: DELETE (PERMANENT)
+    # ================================================================
+    @classmethod
+    def _can_delete_any_shift(cls, current_user: Dict[str, Any]) -> bool:
+        return cls._is_admin(current_user) or cls._has_permission(
+            current_user, Permission.SHIFTS_DELETE_ANY
+        )
+
+    async def delete_shift(
+        self,
+        shift_id: str | uuid.UUID,
+        current_user: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Permanently delete a shift (and its scan history).
+
+        Authorization:
+            - Admin role OR 'shifts.delete.any': may delete ANY shift by valid id.
+            - 'shifts.delete': may delete ONLY shifts that are their own AND that
+              they started themselves. Shifts an admin/supervisor started on their
+              behalf (created_by != self) or legacy shifts (created_by NULL) are denied.
+        If the shift is still active, its Redis lock is released and the shift_id is
+        blacklisted so any outstanding shift_token is rejected immediately.
+        """
+        auth_user_id = self._get_user_id(current_user)
+        can_delete_any = self._can_delete_any_shift(current_user)
+
+        if not can_delete_any and not self._has_permission(current_user, Permission.SHIFTS_DELETE):
+            raise PermissionDeniedError("Permission 'shifts.delete' is required to delete shifts")
+
+        shift = await self.repo.get_by_id(shift_id)
+        if not shift:
+            raise ShiftNotFoundError(f"Shift {shift_id} not found")
+
+        if not can_delete_any:
+            created_by = getattr(shift, "created_by", None)
+            if shift.user_id != auth_user_id or created_by != auth_user_id:
+                raise PermissionDeniedError(
+                    "You can only delete shifts that you started for yourself. "
+                    "Shifts created by an administrator or another user require 'shifts.delete.any'."
+                )
+
+        snapshot = self._to_dict(shift)
+        was_active = shift.status == "active"
+        expires_at = shift.expires_at
+        owner_id = shift.user_id
+
+        removed_scans = await self.repo.delete_shift(shift_id)
+
+        if was_active:
+            try:
+                c = await redis_client.ensure_connected()
+                await c.delete(f"shift:active:user:{owner_id}")
+                ttl = int((expires_at - datetime.now(timezone.utc)).total_seconds()) if expires_at else 0
+                if ttl > 0:
+                    await c.set(revoked_shift_key(snapshot["id"]), "deleted", ex=ttl)
+            except Exception as e:
+                logger.warning(f"Could not invalidate deleted active shift {shift_id} in Redis: {e}")
+
+        logger.warning(
+            f"SECURITY AUDIT: Shift {shift_id} (owner={owner_id}, status={snapshot['status']}) "
+            f"deleted by user {auth_user_id}; {removed_scans} scans removed"
+        )
+        return {
+            "status": "success",
+            "message": f"Shift {snapshot['id']} deleted",
+            "shift": snapshot,
+            "removed_scans": removed_scans,
+        }
+
+    # ================================================================
+    # READ OPERATIONS
+    # ================================================================
+    async def get_shift_by_id(
+        self,
+        shift_id: str | uuid.UUID,
+        current_user: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get shift details enforcing ownership."""
+        shift = await self.repo.get_by_id(shift_id)
+        if not shift:
+            raise ShiftNotFoundError(f"Shift {shift_id} not found")
+
+        auth_user_id = self._get_user_id(current_user)
+        is_owner = shift.user_id == auth_user_id
+        is_privileged = self._can_view_any_shifts(current_user)
+
+        if not is_privileged:
+            can_view_own = self._has_permission(
+                current_user, Permission.SHIFTS_VIEW
+            ) or self._has_permission(
+                current_user, Permission.SHIFTS_VIEW_OWN
+            )
+            if not is_owner or not can_view_own:
+                raise PermissionDeniedError("You do not have permission to view this shift")
+
+        enriched = await self._attach_user_info([self._to_dict(shift)])
+        return enriched[0]
+
+    async def _attach_user_info(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Attach user_name / user_email to shift dicts using a single batched user lookup."""
+        user_ids = list({i["user_id"] for i in items if i.get("user_id") is not None})
+        if not user_ids:
+            return items
+        try:
+            users = await self.user_repo.get_by_ids(user_ids)
+        except Exception as e:
+            logger.warning(f"Could not resolve user names for shifts: {e}")
+            return items
+        lookup = {u.id: u for u in users}
+        for i in items:
+            u = lookup.get(i["user_id"])
+            if u:
+                i["user_name"] = getattr(u, "name", None)
+                i["user_email"] = getattr(u, "email", None)
+        return items
+
+    async def get_my_active_shift(self, current_user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Worker self-service lookup for their currently active shift."""
+        can_view_self = (
+            self._is_admin(current_user)
+            or self._can_view_any_shifts(current_user)
+            or self._has_permission(current_user, Permission.SHIFTS_VIEW)
+            or self._has_permission(current_user, Permission.SHIFTS_VIEW_OWN)
+            or self._has_permission(current_user, Permission.SHIFTS_DELETE)
+        )
+        if not can_view_self:
+            return None
+
+        user_id = self._get_user_id(current_user)
+        shift = await self.repo.get_active_shift_by_user(user_id)
+        if not shift:
+            return None
+        enriched = await self._attach_user_info([self._to_dict(shift)])
+        return enriched[0]
+
+    async def list_shifts(
+        self,
+        current_user: Dict[str, Any],
+        target_user_id: Optional[int] = None,
+        active_only: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        List shift history:
+        - If admin or SHIFTS_VIEW_ANY/ALL: returns shifts across all users.
+        - If SHIFTS_VIEW/OWN: returns only their own shifts.
+        - If shifts.view is disabled: returns empty items (does not expose self data).
+        """
+        is_privileged = self._can_view_any_shifts(current_user)
+        can_view_self = (
+            is_privileged
+            or self._has_permission(current_user, Permission.SHIFTS_VIEW)
+            or self._has_permission(current_user, Permission.SHIFTS_VIEW_OWN)
+            or self._has_permission(current_user, Permission.SHIFTS_DELETE)
+            or self._has_permission(current_user, Permission.USER_HISTORY_VIEW)
+        )
+        auth_user_id = self._get_user_id(current_user)
+
+        if is_privileged:
+            query_user_id = target_user_id
+        elif can_view_self:
+            query_user_id = auth_user_id
+        else:
+            return {
+                "items": [],
+                "limit": limit,
+                "offset": offset,
+                "total": 0,
+            }
+
+        shifts, total_count = await self.repo.list_shifts_filtered(
+            user_id=query_user_id,
+            active_only=active_only,
+            limit=limit,
+            offset=offset,
+        )
+
+        return {
+            "items": await self._attach_user_info([self._to_dict(s) for s in shifts]),
+            "limit": limit,
+            "offset": offset,
+            "total": total_count,
+        }
+
+    # ================================================================
+    # EXPIRY MAINTENANCE
+    # ================================================================
+    async def expire_old_shifts(self, current_user: Dict[str, Any]) -> Dict[str, int]:
+        """Admin or system background job to expire shifts past their expires_at date."""
+        if not self._is_admin(current_user):
+            raise PermissionDeniedError("Admin privileges required to trigger bulk shift expiry")
+
+        count = await self.repo.expire_old_shifts()
+        return {"expired_shifts_count": count}

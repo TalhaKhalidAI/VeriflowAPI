@@ -1,52 +1,54 @@
 services:
-  api:
-    build: .
+  veriflow-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: veriflow-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_HOST=${DATABASE_HOST:-10.0.0.2}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - PORT=8000
     ports:
       - "8000:8000"
-    environment:
-      - ENVIRONMENT=production
-      - SECRET_KEY=${SECRET_KEY}
-      - DATABASE_HOST=db
-      - DATABASE_PORT=5432
-      - DATABASE_USER=postgres
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
-      - DATABASE_NAME=myapp_db
-      - REDIS_URL=redis://redis:6379/0
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
-      - KILL_SWITCH_ENABLED=${KILL_SWITCH_ENABLED:-false}
-      - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT:-100/minute}
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
+      - ./:/app
       - ./logs:/app/logs
-
-  db:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
-      - POSTGRES_DB=myapp_db
+    dns:
+      - 192.168.100.33
+      - 8.8.8.8
+    networks:
+      a-class-bridge:
+        ipv4_address: 10.0.0.10
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
       timeout: 5s
       retries: 5
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7-alpine
-    restart: always
+  veriflow-web:
+    build:
+      context: ../Frontend/veriflow
+      dockerfile: Dockerfile
+    container_name: veriflow-web
+    restart: unless-stopped
     ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "5173:80"
+    volumes:
+      - ../Frontend/veriflow:/app
+      - ../Frontend/veriflow/dist:/usr/share/nginx/html
+    dns:
+      - 192.168.100.33
+      - 8.8.8.8
+    networks:
+      a-class-bridge:
+        ipv4_address: 10.0.0.11
+    depends_on:
+      - veriflow-api
 
-volumes:
-  postgres_data:
+networks:
+  a-class-bridge:
+    external: true
+    name: a-class-bridge

@@ -1,5 +1,5 @@
 # App/models/user.py
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, func,JSON,ForeignKey,Text,BigInteger
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, func, JSON, ForeignKey, Text, BigInteger, Index, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from sqlalchemy.orm import relationship
@@ -44,11 +44,22 @@ class CryptoKey(Base):
     revocation_reason = Column(String(255), nullable=True)
     
     created_by = Column(ForeignKey("users.id"), nullable=True)
+    # Actor who actually generated the key (differs from created_by when an
+    # admin generates a key on behalf of another user). NULL = legacy/unknown.
+    issued_by = Column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class Shift(Base):
     __tablename__ = "shifts"
+    __table_args__ = (
+        Index(
+            "idx_shifts_unique_active_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(ForeignKey("users.id"), nullable=False)
@@ -60,8 +71,11 @@ class Shift(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     ended_at = Column(DateTime(timezone=True), nullable=True)
     revoked_reason = Column(String(255), nullable=True)
+    # Actor who started the shift (differs from user_id when an admin/supervisor
+    # starts a shift on behalf of a worker). NULL = legacy/unknown.
+    created_by = Column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
-    user = relationship("User")
+    user = relationship("User", foreign_keys=[user_id])
     crypto_key = relationship("CryptoKey")
 
 
@@ -80,6 +94,9 @@ class ScanHistory(Base):
     scanned_at = Column(DateTime(timezone=True), nullable=False) 
     synced_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+    shift = relationship("Shift")
+
+
 
 class InventoryRule(Base):
     __tablename__ = "inventory_rules"
@@ -93,3 +110,5 @@ class InventoryRule(Base):
     
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    crypto_key = relationship("CryptoKey")
