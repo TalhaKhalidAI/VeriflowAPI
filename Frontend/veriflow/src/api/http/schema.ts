@@ -1,33 +1,39 @@
-import { z, ZodError } from 'zod'
-
+//import { z, ZodError } from 'zod'
+import { ZodError } from 'zod'
 /**
- * Validate if a URL exists and is valid
- * @param url - The URL to validate
- * @returns The validated URL
- * @throws Error if URL is invalid
+ * Validate an absolute HTTP/HTTPS URL or a relative API path.
  */
 export function validateUrl(url: string): string {
-  if (!url || url.trim() === '') {
+  const value = url?.trim()
+
+  if (!value) {
     throw new Error('URL is required')
   }
 
-  const UrlSchema = z.string().url('Invalid URL format')
- 
+  // Allow relative paths such as /api
+  if (value.startsWith('/') && !value.startsWith('//')) {
+    return value.replace(/\/+$/, '')
+  }
+
   try {
-    return UrlSchema.parse(url.trim())
+    const parsed = new URL(value)
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Only HTTP and HTTPS URLs are allowed')
+    }
+
+    return value.replace(/\/+$/, '')
   } catch (error) {
     if (error instanceof ZodError) {
-      // ✅ Now TypeScript knows error has 'errors' property
       throw new Error(`URL validation failed: ${error.message}`)
     }
+
     throw error
   }
 }
 
 /**
- * Safely validate URL without throwing
- * @param url - The URL to validate
- * @returns Valid URL string or null if invalid
+ * Safely validate URL without throwing.
  */
 export function safeValidateUrl(url: string): string | null {
   try {
@@ -37,7 +43,9 @@ export function safeValidateUrl(url: string): string | null {
   }
 }
 
-// Optional: Type guard for TypeScript
+/**
+ * Type guard for URL validation.
+ */
 export function isValidUrl(url: string): url is string {
   try {
     validateUrl(url)
