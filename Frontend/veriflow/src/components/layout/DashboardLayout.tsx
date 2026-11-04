@@ -189,6 +189,8 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
     navigate('/login');
   };
 
+  // On mobile, the temporary slide-out drawer should ALWAYS show full expanded labels & profile info
+  const isDrawerExpanded = isMobile ? true : sidebarOpen;
   const currentWidth = sidebarOpen ? DRAWER_WIDTH : COLLAPSED_WIDTH;
 
   // Filter navigation items by active user permissions
@@ -226,12 +228,12 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
           height: 64,
           display: 'flex',
           alignItems: 'center',
-          px: sidebarOpen ? 2 : 1.5,
+          px: isDrawerExpanded ? 2 : 1.5,
           borderBottom: '1px solid #1E293B',
-          justifyContent: sidebarOpen ? 'space-between' : 'center',
+          justifyContent: isDrawerExpanded ? 'space-between' : 'center',
         }}
       >
-        {sidebarOpen ? (
+        {isDrawerExpanded ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <img
               src="/msi_white.png"
@@ -277,15 +279,21 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
           />
         )}
 
-        {!isMobile && sidebarOpen && (
-          <IconButton size="small" onClick={toggleSidebar} sx={{ color: '#94A3B8' }}>
+        {isMobile ? (
+          <IconButton size="small" onClick={() => setMobileSidebarOpen(false)} sx={{ color: '#94A3B8', '&:hover': { color: '#F8FAFC' } }}>
             <ChevronLeftIcon fontSize="small" />
           </IconButton>
+        ) : (
+          sidebarOpen && (
+            <IconButton size="small" onClick={toggleSidebar} sx={{ color: '#94A3B8', '&:hover': { color: '#F8FAFC' } }}>
+              <ChevronLeftIcon fontSize="small" />
+            </IconButton>
+          )
         )}
       </Box>
 
       {/* Industrial Shift Status Card in Sidebar (when open) */}
-      {sidebarOpen && (
+      {isDrawerExpanded && (
         <Box sx={{ px: 2, pt: 2, pb: 1 }}>
           <div
             className={`p-2.5 rounded-lg border text-xs font-mono transition-all ${
@@ -330,7 +338,7 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
           const isSelected = location.pathname.startsWith(item.path);
           return (
             <ListItem key={item.id} disablePadding sx={{ display: 'block', mb: 0.5 }}>
-              <Tooltip title={!sidebarOpen ? item.title : ''} placement="right">
+              <Tooltip title={!isDrawerExpanded ? item.title : ''} placement="right">
                 <ListItemButton
                   onClick={() => {
                     navigate(item.path);
@@ -339,38 +347,45 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
                   sx={{
                     minHeight: 44,
                     borderRadius: 1.5,
-                    px: sidebarOpen ? 2 : 1.5,
-                    bgcolor: isSelected ? 'rgba(250, 204, 21, 0.12)' : 'transparent',
-                    color: isSelected ? '#FACC15' : '#94A3B8',
+                    px: isDrawerExpanded ? 2 : 1.5,
+                    bgcolor: isSelected ? 'rgba(250, 204, 21, 0.14)' : 'transparent',
+                    color: isSelected ? '#FACC15' : '#F8FAFC',
                     borderLeft: isSelected ? '3px solid #FACC15' : '3px solid transparent',
                     transition: 'all 0.15s ease',
                     '&:hover': {
-                      bgcolor: isSelected ? 'rgba(250, 204, 21, 0.18)' : 'rgba(255, 255, 255, 0.04)',
-                      color: isSelected ? '#FACC15' : '#F8FAFC',
+                      bgcolor: isSelected ? 'rgba(250, 204, 21, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+                      color: isSelected ? '#FACC15' : '#FFFFFF',
                     },
                   }}
                 >
                   <ListItemIcon
                     sx={{
                       minWidth: 0,
-                      mr: sidebarOpen ? 2 : 'auto',
+                      mr: isDrawerExpanded ? 2 : 'auto',
                       justifyContent: 'center',
                       color: isSelected ? '#FACC15' : '#94A3B8',
                     }}
                   >
                     {item.icon}
                   </ListItemIcon>
-                  {sidebarOpen && (
+                  {isDrawerExpanded && (
                     <ListItemText
                       primary={item.title}
+                      secondary={isMobile ? item.description : undefined}
                       primaryTypographyProps={{
-                        fontSize: '0.85rem',
-                        fontWeight: isSelected ? 700 : 500,
+                        fontSize: '0.88rem',
+                        fontWeight: isSelected ? 800 : 600,
                         letterSpacing: '0.02em',
+                        color: isSelected ? '#FACC15' : '#F8FAFC',
+                      }}
+                      secondaryTypographyProps={{
+                        fontSize: '0.7rem',
+                        color: '#94A3B8',
+                        noWrap: true,
                       }}
                     />
                   )}
-                  {sidebarOpen && item.badge && (
+                  {isDrawerExpanded && item.badge && (
                     <Chip
                       size="small"
                       label={item.badge}
@@ -393,12 +408,12 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
       {/* Operator Session Footer */}
       <Box
         sx={{
-          p: sidebarOpen ? 2 : 1,
+          p: isDrawerExpanded ? 2 : 1,
           borderTop: '1px solid #1E293B',
           bgcolor: '#0B1323',
         }}
       >
-        {sidebarOpen ? (
+        {isDrawerExpanded ? (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box onClick={() => setAccountModalOpen(true)} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, overflow: 'hidden', cursor: 'pointer', borderRadius: 1.5, p: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }}>
               <Avatar
@@ -465,7 +480,7 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#07111D' }}>
+    <Box sx={{ display: 'flex', width: '100%', maxWidth: '100vw', minHeight: '100dvh', bgcolor: '#07111D', overflowX: 'hidden' }}>
       {/* Mobile Drawer (Accessible via hamburger or bottom dock More) */}
       {isMobile ? (
         <Drawer
@@ -479,6 +494,7 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
               boxSizing: 'border-box',
               borderRight: '1px solid #1E293B',
               bgcolor: '#07111D',
+              color: '#F8FAFC',
             },
           }}
         >
@@ -501,6 +517,7 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
               overflowX: 'hidden',
               borderRight: '1px solid #1E293B',
               bgcolor: '#07111D',
+              color: '#F8FAFC',
             },
           }}
         >
@@ -515,10 +532,13 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
           flexGrow: 1,
           display: 'flex',
           flexDirection: 'column',
-          width: { md: `calc(100% - ${currentWidth}px)` },
-          minHeight: '100vh',
+          minWidth: 0,
+          maxWidth: '100%',
+          width: { xs: '100%', md: `calc(100% - ${currentWidth}px)` },
+          minHeight: '100dvh',
           bgcolor: '#07111D',
-          // pb-20 on mobile prevents bottom navigation bar from overlapping page content
+          overflowX: 'hidden',
+          // pb on mobile prevents bottom navigation bar from overlapping page content
           pb: { xs: 10, md: 3 },
         }}
       >
@@ -533,14 +553,14 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
             zIndex: theme.zIndex.drawer + 1,
           }}
         >
-          <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 2, sm: 3 }, minHeight: 58 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1.5, sm: 3 }, minHeight: { xs: 54, sm: 58 }, gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1.5 }, minWidth: 0, flex: 1 }}>
               {isMobile ? (
                 <IconButton
                   color="inherit"
                   edge="start"
                   onClick={() => setMobileSidebarOpen(true)}
-                  sx={{ color: '#FACC15', mr: 0.5 }}
+                  sx={{ color: '#FACC15', mr: 0.25, flexShrink: 0 }}
                 >
                   <MenuIcon />
                 </IconButton>
@@ -550,7 +570,7 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
                     color="inherit"
                     edge="start"
                     onClick={toggleSidebar}
-                    sx={{ mr: 1, color: '#94A3B8' }}
+                    sx={{ mr: 1, color: '#94A3B8', flexShrink: 0 }}
                   >
                     <ChevronRightIcon />
                   </IconButton>
@@ -558,16 +578,25 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
               )}
 
               {/* Title & Industrial route breadcrumb */}
-              <div className="flex items-center gap-2">
-                <span className="hidden sm:inline-block w-2 h-2 bg-[#FACC15] rounded-sm rotate-45" />
-                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#F8FAFC', letterSpacing: '0.02em' }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="hidden sm:inline-block w-2 h-2 bg-[#FACC15] rounded-sm rotate-45 shrink-0" />
+                <Typography
+                  variant="subtitle1"
+                  noWrap
+                  sx={{
+                    fontWeight: 800,
+                    color: '#F8FAFC',
+                    letterSpacing: '0.02em',
+                    fontSize: { xs: '0.92rem', sm: '1rem' },
+                  }}
+                >
                   {visibleNavItems.find((n) => location.pathname.startsWith(n.path))?.title || 'System Console'}
                 </Typography>
               </div>
             </Box>
 
             {/* Industrial Telemetry & Status Badges */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1 }, flexShrink: 0 }}>
               {/* Active Shift Live Pill */}
               {activeShift ? (
                 <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#FACC15]/15 border border-[#FACC15]/40 text-[#FACC15] font-mono text-xs font-bold shadow-[0_0_10px_rgba(250,204,21,0.15)]">
@@ -585,22 +614,22 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
               {isApiOffline ? (
                 <div
                   onClick={handleRetryApi}
-                  className="cursor-pointer inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-rose-500/15 border border-rose-500/50 text-rose-300 font-mono text-[11px] font-bold animate-pulse hover:bg-rose-500/25 transition-all"
+                  className="cursor-pointer inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-rose-500/15 border border-rose-500/50 text-rose-300 font-mono text-[10px] sm:text-[11px] font-bold animate-pulse hover:bg-rose-500/25 transition-all"
                   title="API is currently offline. Click to test reconnection."
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                  <span className="hidden xs:inline">API</span> OFFLINE
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                  <span className="hidden sm:inline">API</span> OFFLINE
                 </div>
               ) : (
-                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[11px] font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="hidden xs:inline">API</span> ONLINE
+                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[10px] sm:text-[11px] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span className="hidden sm:inline">API</span> ONLINE
                 </div>
               )}
 
               {/* User Role Badge */}
               <div
-                className={`inline-flex items-center px-2 py-1 rounded-md font-mono text-[11px] font-bold uppercase tracking-wider ${
+                className={`inline-flex items-center px-2 py-1 rounded-md font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-wider ${
                   user?.role === 'admin'
                     ? 'bg-rose-500/15 border border-rose-500/40 text-rose-400'
                     : 'bg-blue-500/15 border border-blue-500/40 text-blue-400'
@@ -640,53 +669,121 @@ export function DashboardLayout({ children }: { children?: React.ReactNode }) {
         )}
 
         {/* Dynamic Route View */}
-        <Box sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2.5, md: 3 } }}>
+        <Box sx={{ flexGrow: 1, minWidth: 0, maxWidth: '100%', width: '100%', overflowX: 'hidden', p: { xs: 1.5, sm: 2.5, md: 3 } }}>
           {children || <Outlet />}
         </Box>
       </Box>
 
       <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
 
-      {/* DaisyUI Mobile Bottom Navigation Dock (Responsive Android look) */}
-      <div className="btm-nav btm-nav-md md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0F172A] border-t border-[#1E293B] shadow-2xl backdrop-blur-lg">
-        {mobileDockItems.map((item) => {
-          const isSelected = location.pathname.startsWith(item.path);
-          return (
-            <button
-              key={item.id}
-              onClick={() => navigate(item.path)}
-              className={`flex flex-col items-center justify-center transition-all ${
-                isSelected
-                  ? 'active text-[#FACC15] bg-[#FACC15]/10 border-t-2 border-[#FACC15]'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <div className="relative">
-                {React.cloneElement(item.icon, {
-                  sx: { fontSize: 20, color: isSelected ? '#FACC15' : 'inherit' },
-                })}
-                {item.id === 'shifts' && activeShift && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
-                )}
-              </div>
-              <span className="btm-nav-label text-[10px] font-medium tracking-tight mt-0.5">
-                {String(item?.title || '').split(' ')[0]}
-              </span>
-            </button>
-          );
-        })}
-
-        {/* Menu / More Button to open full Drawer on Mobile */}
-        <button
-          onClick={() => setMobileSidebarOpen(true)}
-          className={`flex flex-col items-center justify-center text-slate-400 hover:text-[#FACC15] transition-all ${
-            mobileSidebarOpen ? 'text-[#FACC15]' : ''
-          }`}
+      {/* Mobile Bottom Navigation Dock */}
+      {isMobile && (
+        <Box
+          component="nav"
+          sx={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1300,
+            height: 62,
+            width: '100%',
+            display: { xs: 'flex', md: 'none' },
+            flexDirection: 'row',
+            alignItems: 'stretch',
+            justifyContent: 'space-around',
+            bgcolor: 'rgba(15, 23, 42, 0.98)',
+            borderTop: '1px solid #1E293B',
+            boxShadow: '0 -8px 24px rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(12px)',
+          }}
         >
-          <MenuIcon sx={{ fontSize: 20 }} />
-          <span className="btm-nav-label text-[10px] font-medium tracking-tight mt-0.5">More</span>
-        </button>
-      </div>
+          {mobileDockItems.map((item) => {
+            const isSelected = location.pathname.startsWith(item.path);
+            return (
+              <button
+                key={item.id}
+                onClick={() => navigate(item.path)}
+                style={{
+                  flex: '1 1 0%',
+                  minWidth: 0,
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 2,
+                  padding: '4px 2px',
+                  border: 'none',
+                  borderTop: isSelected ? '2px solid #FACC15' : '2px solid transparent',
+                  backgroundColor: isSelected ? 'rgba(250, 204, 21, 0.1)' : 'transparent',
+                  color: isSelected ? '#FACC15' : '#94A3B8',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {React.cloneElement(item.icon, {
+                    sx: { fontSize: 20, color: isSelected ? '#FACC15' : 'inherit' },
+                  })}
+                  {item.id === 'shifts' && activeShift && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: -2,
+                        right: -4,
+                        width: 8,
+                        height: 8,
+                        backgroundColor: '#34D399',
+                        borderRadius: '50%',
+                      }}
+                    />
+                  )}
+                </div>
+                <span
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    letterSpacing: '-0.01em',
+                    marginTop: 2,
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {String(item?.title || '').split(' ')[0]}
+                </span>
+              </button>
+            );
+          })}
+
+          {/* Menu / More Button to open full Drawer on Mobile */}
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            style={{
+              flex: '1 1 0%',
+              minWidth: 0,
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 2,
+              padding: '4px 2px',
+              border: 'none',
+              borderTop: mobileSidebarOpen ? '2px solid #FACC15' : '2px solid transparent',
+              backgroundColor: 'transparent',
+              color: mobileSidebarOpen ? '#FACC15' : '#94A3B8',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <MenuIcon sx={{ fontSize: 20 }} />
+            <span style={{ fontSize: '10px', fontWeight: 700, marginTop: 2 }}>More</span>
+          </button>
+        </Box>
+      )}
     </Box>
   );
 }

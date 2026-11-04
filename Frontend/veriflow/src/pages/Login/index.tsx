@@ -208,7 +208,7 @@ export function Login() {
               <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mb: 1, textAlign: 'center' }}>
                 Quick Fill for Testing:
               </Typography>
-              <Stack direction="row" spacing={1} justifyContent="center">
+              <Stack direction="row" spacing={1} justifyContent="center" useFlexGap flexWrap="wrap">
                 <Chip
                   size="small"
                   label="Admin (All Access)"
@@ -259,10 +259,18 @@ export function Login() {
                 sx={{
                   mb: 2,
                   '& .MuiOutlinedInput-root': {
-                    bgcolor: 'rgba(30, 41, 59, 0.7)',
-                    '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.15)' },
-                    '&:hover fieldset': { borderColor: '#3B82F6' },
+                    color: '#F8FAFC',
+                    bgcolor: '#07111D',
+                    '& fieldset': { borderColor: 'rgba(148, 163, 184, 0.3)' },
+                    '&:hover fieldset': { borderColor: '#38BDF8' },
+                    '&.Mui-focused fieldset': { borderColor: '#FACC15' },
                   },
+                  '& .MuiInputBase-input': {
+                    color: '#F8FAFC !important',
+                    WebkitTextFillColor: '#F8FAFC !important',
+                  },
+                  '& .MuiInputLabel-root': { color: '#94A3B8' },
+                  '& .MuiInputLabel-root.Mui-focused': { color: '#FACC15' },
                 }}
                 InputProps={{
                   startAdornment: (
@@ -285,10 +293,18 @@ export function Login() {
                 sx={{
                   mb: 2.5,
                   '& .MuiOutlinedInput-root': {
-                    bgcolor: 'rgba(30, 41, 59, 0.7)',
-                    '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.15)' },
-                    '&:hover fieldset': { borderColor: '#3B82F6' },
+                    color: '#F8FAFC',
+                    bgcolor: '#07111D',
+                    '& fieldset': { borderColor: 'rgba(148, 163, 184, 0.3)' },
+                    '&:hover fieldset': { borderColor: '#38BDF8' },
+                    '&.Mui-focused fieldset': { borderColor: '#FACC15' },
                   },
+                  '& .MuiInputBase-input': {
+                    color: '#F8FAFC !important',
+                    WebkitTextFillColor: '#F8FAFC !important',
+                  },
+                  '& .MuiInputLabel-root': { color: '#94A3B8' },
+                  '& .MuiInputLabel-root.Mui-focused': { color: '#FACC15' },
                 }}
                 InputProps={{
                   startAdornment: (

@@ -369,11 +369,31 @@ export const Table = <T extends Record<string, any>>({
 
   // ─── Render ────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }} className={className}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+      }}
+      className={className}
+    >
       {/* ─── Top Search / Filter Bar ─────────────────────────── */}
       {showSearch && searchableColumns.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: 420 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+            width: '100%',
+            minWidth: 0,
+          }}
+        >
+          <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 0, width: '100%', maxWidth: 420 }}>
             <span
               style={{
                 position: 'absolute',
@@ -443,7 +463,11 @@ export const Table = <T extends Record<string, any>>({
       {/* ─── Main Table Container ─────────────────────────────── */}
       <div
         style={{
+          width: '100%',
+          maxWidth: '100%',
+          minWidth: 0,
           overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
           borderRadius: 12,
           border: '1px solid #1E293B',
           backgroundColor: '#0B132B',

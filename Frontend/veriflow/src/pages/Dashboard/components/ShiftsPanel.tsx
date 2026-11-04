@@ -443,10 +443,10 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
       </div>
 
       {/* Sub-View Switcher: Tabular vs Step Line Chart vs Horizontal Bar Chart */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#07111D] p-3 rounded-xl border border-[#1E293B]">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-[#07111D] p-3 rounded-xl border border-[#1E293B]">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-mono font-bold text-slate-400">VIEW MODE:</span>
-          <div className="join">
+          <div className="join flex flex-wrap gap-1">
             <button
               onClick={() => setViewTab('tabular')}
               className={`join-item btn btn-xs font-mono transition-all ${
@@ -475,12 +475,12 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
         </div>
 
         {/* Filter Toolbar: Time vs Status Dropdown & Employee selector */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto">
           <select
             value={filterMode}
             onChange={(e) => setFilterMode(e.target.value as FilterMode)}
             aria-label="Shift Filter Mode"
-            className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-yellow-400 font-mono font-bold"
+            className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-yellow-400 font-mono font-bold min-h-[32px]"
           >
             <option value="time">⏱ By Time</option>
             <option value="status">📑 By Status</option>
@@ -491,7 +491,7 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
               value={timeFilter}
               onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}
               aria-label="Time Filter Duration"
-              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-slate-200 font-mono"
+              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-white font-mono min-h-[32px]"
             >
               <option value="all">All Time</option>
               <option value="today">Today (24h)</option>
@@ -503,7 +503,7 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
               aria-label="Shift Status Filter"
-              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-slate-200 font-mono"
+              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-white font-mono min-h-[32px]"
             >
               <option value="all">All States</option>
               <option value="active">Active Only</option>
@@ -517,7 +517,7 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
               value={selectedUserId}
               onChange={(e) => setSelectedUserId(e.target.value)}
               aria-label="Filter by Employee"
-              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-slate-200 font-mono"
+              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-white font-mono min-h-[32px]"
             >
               <option value="all">All Employees</option>
               {userOptions.map((opt) => (
@@ -534,7 +534,7 @@ export function ShiftsPanel({ shifts, users }: ShiftsPanelProps) {
               placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="input input-bordered input-xs bg-[#0F172A] border-[#1E293B] text-slate-200 placeholder-slate-500 font-mono w-28 sm:w-36"
+              className="input input-bordered input-xs bg-[#0F172A] border-[#1E293B] text-white placeholder-slate-400 font-mono w-full sm:w-36 min-h-[32px]"
             />
           )}
         </div>

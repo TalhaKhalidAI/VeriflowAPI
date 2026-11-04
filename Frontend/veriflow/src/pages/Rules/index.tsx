@@ -371,7 +371,7 @@ export function RulesPage() {
   ];
 
   return (
-    <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
+    <Box sx={{ width: '100%', minWidth: 0, maxWidth: 1400, mx: 'auto', overflowX: 'hidden' }}>
       {/* Top Banner */}
       <Box
         sx={{
@@ -384,7 +384,11 @@ export function RulesPage() {
         }}
       >
         <Box>
-          <Typography variant="h5" fontWeight={800} sx={{ letterSpacing: -0.5 }}>
+          <Typography
+            variant="h5"
+            fontWeight={800}
+            sx={{ color: '#F8FAFC', letterSpacing: -0.5, fontSize: { xs: '1.3rem', sm: '1.5rem' } }}
+          >
             Inventory Rules & Verification Policies
           </Typography>
           <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
@@ -392,8 +396,9 @@ export function RulesPage() {
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1.5}>
+        <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ width: { xs: '100%', md: 'auto' } }}>
           <Button
+            size="small"
             variant="outlined"
             startIcon={<PolicyIcon />}
             onClick={() => setApplicableModalOpen(true)}
@@ -407,6 +412,7 @@ export function RulesPage() {
           </Button>
 
           <Button
+            size="small"
             variant="outlined"
             startIcon={<TestIcon />}
             onClick={() => setTestDialogOpen(true)}
@@ -421,6 +427,7 @@ export function RulesPage() {
 
           {canCreateRule && (
             <Button
+              size="small"
               variant="contained"
               startIcon={<AddIcon />}
               onClick={handleOpenCreate}

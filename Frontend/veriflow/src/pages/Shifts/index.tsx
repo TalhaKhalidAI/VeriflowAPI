@@ -397,7 +397,7 @@ export function ShiftsPage() {
   ];
 
   return (
-    <Box sx={{ maxWidth: 1400, mx: 'auto', p: { xs: 2, sm: 3 } }}>
+    <Box sx={{ width: '100%', minWidth: 0, maxWidth: 1400, mx: 'auto', p: { xs: 0.5, sm: 2 }, overflowX: 'hidden' }}>
       {/* Top Banner */}
       <Box
         sx={{
@@ -410,8 +410,18 @@ export function ShiftsPage() {
         }}
       >
         <Box>
-          <Typography variant="h4" fontWeight={800} sx={{ color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <ShiftIcon sx={{ color: '#FACC15', fontSize: 36 }} />
+          <Typography
+            variant="h4"
+            fontWeight={800}
+            sx={{
+              color: '#F8FAFC',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              fontSize: { xs: '1.35rem', sm: '1.75rem', md: '2rem' },
+            }}
+          >
+            <ShiftIcon sx={{ color: '#FACC15', fontSize: { xs: 28, sm: 36 } }} />
             Work Shifts & Scanner Sessions
           </Typography>
           <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
@@ -419,11 +429,12 @@ export function ShiftsPage() {
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1.5} flexWrap="wrap">
+        <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ width: { xs: '100%', md: 'auto' } }}>
           {hasActiveShift ? (
             <>
               {canCreateShift && (
                 <Button
+                  size="small"
                   variant="outlined"
                   startIcon={<ReissueIcon />}
                   onClick={() => setReissueModalOpen(true)}
@@ -439,6 +450,7 @@ export function ShiftsPage() {
               )}
               {canCheckoutShift && (
                 <Button
+                  size="small"
                   variant="contained"
                   color="warning"
                   startIcon={<StopIcon />}
@@ -450,6 +462,7 @@ export function ShiftsPage() {
               )}
               {canDeleteShiftRecord(activeShift) && (
                 <Button
+                  size="small"
                   variant="outlined"
                   color="error"
                   startIcon={<DeleteIcon />}
@@ -464,6 +477,7 @@ export function ShiftsPage() {
             <>
               {isAdmin && (
                 <Button
+                  size="small"
                   variant="outlined"
                   startIcon={<ReissueIcon />}
                   onClick={() => setReissueModalOpen(true)}
@@ -474,6 +488,7 @@ export function ShiftsPage() {
               )}
               {canCreateShift && (
                 <Button
+                  size="small"
                   variant="contained"
                   startIcon={<StartIcon />}
                   onClick={() => setStartModalOpen(true)}
@@ -485,6 +500,7 @@ export function ShiftsPage() {
             </>
           )}
           <Button
+            size="small"
             variant="outlined"
             color="error"
             startIcon={<DeleteIcon />}
@@ -525,9 +541,9 @@ export function ShiftsPage() {
             boxShadow: '0 8px 32px rgba(250, 204, 21, 0.08)',
           }}
         >
-          <CardContent sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
                 <Box
                   sx={{
                     width: 12,
@@ -537,13 +553,13 @@ export function ShiftsPage() {
                     boxShadow: '0 0 12px #10B981',
                   }}
                 />
-                <Typography variant="h6" fontWeight={700} sx={{ color: '#F8FAFC' }}>
+                <Typography variant="h6" fontWeight={700} sx={{ color: '#F8FAFC', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                   CURRENT ACTIVE SHIFT
                 </Typography>
                 <Chip label="ACTIVE SESSION" color="success" size="small" sx={{ fontWeight: 700 }} />
               </Box>
 
-              <Typography variant="caption" sx={{ color: '#94A3B8', fontFamily: 'monospace' }}>
+              <Typography variant="caption" sx={{ color: '#94A3B8', fontFamily: 'monospace', wordBreak: 'break-all' }}>
                 Shift ID: {activeShift?.id}
               </Typography>
             </Box>
@@ -671,7 +687,7 @@ export function ShiftsPage() {
           </TextField>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Stack direction="row" spacing={1.5}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
               <TextField
                 type="number"
                 label="Custom Token / Shift Duration"
@@ -683,11 +699,11 @@ export function ShiftsPage() {
                   })
                 }
                 inputProps={{ min: 1 }}
-                sx={{ width: '50%' }}
+                sx={{ width: { xs: '100%', sm: '50%' } }}
                 size="small"
                 helperText="Enter any positive number"
               />
-              <FormControl sx={{ width: '50%' }} size="small">
+              <FormControl sx={{ width: { xs: '100%', sm: '50%' } }} size="small">
                 <InputLabel>Duration Unit</InputLabel>
                 <Select
                   value={startForm.duration_unit}

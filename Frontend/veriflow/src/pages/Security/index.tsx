@@ -128,11 +128,30 @@ export const SecurityPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1300, mx: 'auto' }}>
+    <Box sx={{ width: '100%', minWidth: 0, p: { xs: 0.5, sm: 2 }, maxWidth: 1300, mx: 'auto', overflowX: 'hidden' }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'flex-start', md: 'center' },
+          gap: 2,
+          mb: 3,
+        }}
+      >
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Typography
+            variant="h4"
+            sx={{
+              fontWeight: 800,
+              color: '#F8FAFC',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              fontSize: { xs: '1.35rem', sm: '1.75rem', md: '2rem' },
+            }}
+          >
             <Lock sx={{ color: '#38BDF8' }} /> Two-Factor Authentication & Verification
           </Typography>
           <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
@@ -140,6 +159,7 @@ export const SecurityPage: React.FC = () => {
           </Typography>
         </Box>
         <Button
+          size="small"
           variant="outlined"
           startIcon={<RefreshCw fontSize="small" />}
           onClick={() => refetchStatus()}

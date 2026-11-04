@@ -382,11 +382,11 @@ export function AttendanceChart({ shifts, users }: AttendanceChartProps) {
       {/* Controls Bar: Granularity, Range & Zoom Buttons */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-[#07111D] p-3 rounded-xl border border-[#1E293B]">
         {/* Left: Granularity Dropdown (Day / Hour / Minute) */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto">
           <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
             Resolution:
           </span>
-          <div className="join">
+          <div className="join flex flex-wrap gap-1">
             <button
               onClick={() => setGranularity('day')}
               className={`join-item btn btn-xs font-mono ${
@@ -418,7 +418,7 @@ export function AttendanceChart({ shifts, users }: AttendanceChartProps) {
               value={rangePreset}
               onChange={(e) => setRangePreset(e.target.value as RangePreset)}
               aria-label="Attendance Date Range Preset"
-              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-slate-200 font-mono"
+              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-white font-mono w-full sm:w-auto min-h-[32px]"
             >
               <option value="7d">Last 7 Days</option>
               <option value="14d">Last 14 Days</option>

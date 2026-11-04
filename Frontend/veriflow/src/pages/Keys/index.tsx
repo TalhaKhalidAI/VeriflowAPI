@@ -494,7 +494,7 @@ export function KeysPage() {
   ];
 
   return (
-    <Box sx={{ maxWidth: 1400, mx: 'auto', p: { xs: 2, sm: 3 } }}>
+    <Box sx={{ width: '100%', minWidth: 0, maxWidth: 1400, mx: 'auto', p: { xs: 0.5, sm: 2 }, overflowX: 'hidden' }}>
       {/* Top Banner */}
       <Box
         sx={{
@@ -507,14 +507,24 @@ export function KeysPage() {
         }}
       >
         <Box>
-          <Typography variant="h4" fontWeight={800} sx={{ color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <KeyIcon sx={{ color: '#38BDF8', fontSize: 36 }} />
+          <Typography
+            variant="h4"
+            fontWeight={800}
+            sx={{
+              color: '#F8FAFC',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              fontSize: { xs: '1.35rem', sm: '1.75rem', md: '2rem' },
+            }}
+          >
+            <KeyIcon sx={{ color: '#38BDF8', fontSize: { xs: 28, sm: 36 } }} />
             Cryptographic Keys & Asymmetric Engine
           </Typography>
           <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
             Manage RSA keypairs, sign offline tokens, inspect JWKS, and issue RS256-signed product tag QR codes.
           </Typography>
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex flex-wrap items-center gap-2 mt-2">
             <span className="text-xs font-mono text-slate-400">Product Tag QR Engine:</span>
             {canCreateTags ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-yellow-500/15 border border-yellow-500/40 text-yellow-300">
@@ -531,7 +541,7 @@ export function KeysPage() {
         </Box>
 
         {/* Sleek Industrial Command Toolbar */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {/* Tool actions with unified industrial theme */}
           <button
             onClick={() => {
@@ -989,7 +999,7 @@ export function KeysPage() {
             ))}
           </TextField>
 
-          <Stack direction="row" spacing={1.5}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
             <TextField
               label="Expiration Duration"
               type="number"
@@ -998,10 +1008,10 @@ export function KeysPage() {
                 setIssueForm({ ...issueForm, expires_in_value: Math.max(1, Number(e.target.value) || 1) })
               }
               inputProps={{ min: 1 }}
-              sx={{ width: '50%' }}
+              sx={{ width: { xs: '100%', sm: '50%' } }}
               size="small"
             />
-            <FormControl sx={{ width: '50%' }} size="small">
+            <FormControl sx={{ width: { xs: '100%', sm: '50%' } }} size="small">
               <InputLabel>Duration Unit</InputLabel>
               <Select
                 value={issueForm.expires_in_unit}
@@ -1378,16 +1388,16 @@ export function KeysPage() {
                 </Box>
               )}
 
-              <Stack direction="row" spacing={2}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                 <TextField
                   type="number"
                   label="Expiration Duration"
                   value={tagForm.duration}
                   onChange={(e) => setTagForm({ ...tagForm, duration: Number(e.target.value) })}
-                  sx={{ width: '50%' }}
+                  sx={{ width: { xs: '100%', sm: '50%' } }}
                   size="small"
                 />
-                <FormControl sx={{ width: '50%' }} size="small">
+                <FormControl sx={{ width: { xs: '100%', sm: '50%' } }} size="small">
                   <InputLabel>Unit</InputLabel>
                   <Select
                     value={tagForm.unit}

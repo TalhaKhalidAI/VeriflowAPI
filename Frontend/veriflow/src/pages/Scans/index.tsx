@@ -237,7 +237,7 @@ export function ScansPage() {
   ];
 
   return (
-    <Box sx={{ maxWidth: 1400, mx: "auto" }}>
+    <Box sx={{ width: "100%", minWidth: 0, maxWidth: 1400, mx: "auto", overflowX: "hidden" }}>
       {/* Top Banner */}
       <Box
         sx={{
@@ -250,7 +250,11 @@ export function ScansPage() {
         }}
       >
         <Box>
-          <Typography variant="h5" fontWeight={800} sx={{ letterSpacing: -0.5 }}>
+          <Typography
+            variant="h5"
+            fontWeight={800}
+            sx={{ color: "#F8FAFC", letterSpacing: -0.5, fontSize: { xs: "1.3rem", sm: "1.5rem" } }}
+          >
             Scan Audits & Telemetry
           </Typography>
           <Typography variant="body2" sx={{ color: "#94A3B8", mt: 0.5 }}>
@@ -258,8 +262,9 @@ export function ScansPage() {
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1.5}>
+        <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ width: { xs: "100%", md: "auto" } }}>
           <Button
+            size="small"
             variant="contained"
             startIcon={<VerifyIcon />}
             onClick={() => setVerifyModalOpen(true)}

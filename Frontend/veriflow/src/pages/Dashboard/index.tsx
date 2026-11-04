@@ -177,7 +177,7 @@ export function DashboardPage() {
   const hasAnyAction = canCreateShift || canCreateKey || canRules || canScans;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="w-full min-w-0 space-y-6 max-w-7xl mx-auto pb-12 overflow-x-hidden">
       {/* Industrial Station Hero Banner */}
       <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl p-5 md:p-6 shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-[#FACC15]/5 rounded-full blur-3xl pointer-events-none" />
@@ -420,12 +420,12 @@ export function DashboardPage() {
             </div>
 
             {/* DaisyUI Responsive Navigation Tabs: Only authorized tabs */}
-            <div className="tabs tabs-boxed bg-[#07111D] border border-[#1E293B] p-1 rounded-xl">
+            <div className="tabs tabs-boxed bg-[#07111D] border border-[#1E293B] p-1.5 rounded-xl flex flex-wrap gap-1.5 w-full lg:w-auto">
               {availableTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveAnalyticsTab(tab.id)}
-                  className={`tab tab-sm font-mono font-bold transition-all ${
+                  className={`tab tab-sm flex-1 sm:flex-initial font-mono text-xs font-bold transition-all px-3 py-1.5 rounded-lg ${
                     activeAnalyticsTab === tab.id
                       ? 'tab-active !bg-[#FACC15] !text-slate-900 shadow-md'
                       : 'text-slate-400 hover:text-white'

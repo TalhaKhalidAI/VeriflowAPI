@@ -278,7 +278,7 @@ export function RulesMatrixChart({ rules, users }: RulesMatrixChartProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#07111D] p-3 rounded-xl border border-[#1E293B]">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-mono font-bold text-slate-400">CHART TYPE:</span>
-          <div className="join">
+          <div className="join flex flex-wrap gap-1">
             <button
               onClick={() => setViewMode('heatmap')}
               className={`join-item btn btn-xs font-mono ${
@@ -300,13 +300,13 @@ export function RulesMatrixChart({ rules, users }: RulesMatrixChartProps) {
 
         {/* Role Filter (Allowed with permission) */}
         {canViewOthers && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-slate-400">ROLE:</span>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <span className="text-xs font-mono text-slate-400 shrink-0">ROLE:</span>
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
               aria-label="Role Filter"
-              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-slate-200 font-mono"
+              className="select select-bordered select-xs bg-[#0F172A] border-[#1E293B] text-white font-mono w-full sm:w-auto min-h-[32px]"
             >
               <option value="all">All Employees</option>
               <option value="admin">Admins Only</option>

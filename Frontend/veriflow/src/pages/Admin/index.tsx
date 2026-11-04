@@ -454,19 +454,39 @@ export const AdminPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1400, mx: 'auto' }}>
+    <Box sx={{ width: '100%', minWidth: 0, p: { xs: 0.5, sm: 2 }, maxWidth: 1400, mx: 'auto', overflowX: 'hidden' }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'flex-start', md: 'center' },
+          gap: 2,
+          mb: 3,
+        }}
+      >
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Typography
+            variant="h4"
+            sx={{
+              fontWeight: 800,
+              color: '#F8FAFC',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              fontSize: { xs: '1.35rem', sm: '1.75rem', md: '2rem' },
+            }}
+          >
             <Settings sx={{ color: '#38BDF8' }} /> Admin Governance Console
           </Typography>
           <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
             Manage identity accounts, cryptographic roles, granular permissions, and kill-switch recovery.
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, width: { xs: '100%', md: 'auto' } }}>
           <Button
+            size="small"
             variant="outlined"
             startIcon={<RefreshCw fontSize="small" />}
             onClick={() => refetchUsers()}
@@ -475,6 +495,7 @@ export const AdminPage: React.FC = () => {
             Refresh
           </Button>
           <Button
+            size="small"
             variant="contained"
             color="error"
             startIcon={<ShieldAlert fontSize="small" />}
@@ -488,7 +509,14 @@ export const AdminPage: React.FC = () => {
 
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: '#1E293B', mb: 3 }}>
-        <Tabs value={activeTab} onChange={(_, val) => setActiveTab(val)} textColor="inherit">
+        <Tabs
+          value={activeTab}
+          onChange={(_, val) => setActiveTab(val)}
+          textColor="inherit"
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+        >
           <Tab label="User Management & Security" icon={<Users fontSize="small" />} iconPosition="start" />
           <Tab
             label={permMatrixUser ? `Permissions (${permMatrixUser.email})` : 'Permission Matrix'}
@@ -586,8 +614,17 @@ export const AdminPage: React.FC = () => {
 
       {/* TAB 1: PERMISSION MATRIX FOR SINGLE USER */}
       {activeTab === 1 && (
-        <Card sx={{ bgcolor: '#0B132B', border: '1px solid #1E293B', borderRadius: 2, p: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Card sx={{ bgcolor: '#0B132B', border: '1px solid #1E293B', borderRadius: 2, p: { xs: 2, sm: 3 } }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: 'space-between',
+              alignItems: { xs: 'flex-start', sm: 'center' },
+              gap: 2,
+              mb: 3,
+            }}
+          >
             <Box>
               <Typography variant="h6" sx={{ color: '#F8FAFC', fontWeight: 700 }}>
                 {permMatrixUser
@@ -599,7 +636,7 @@ export const AdminPage: React.FC = () => {
               </Typography>
             </Box>
             {permMatrixUser && (
-              <Box sx={{ display: 'flex', gap: 1.5 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
                 <Button variant="outlined" color="error" size="small" onClick={handleClearUserPerms}>
                   Revoke All
                 </Button>

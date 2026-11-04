@@ -498,10 +498,12 @@ export const RecoveryPage: React.FC = () => {
                     sx={{
                       mb: 2,
                       '& .MuiOutlinedInput-root': {
-                        bgcolor: 'rgba(30, 41, 59, 0.7)',
-                        '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.15)' },
+                        color: '#F8FAFC',
+                        bgcolor: '#07111D',
+                        '& fieldset': { borderColor: 'rgba(148, 163, 184, 0.3)' },
                         '&:hover fieldset': { borderColor: '#38BDF8' },
                       },
+                      '& .MuiInputBase-input': { color: '#F8FAFC !important', WebkitTextFillColor: '#F8FAFC !important' },
                     }}
                     InputProps={{
                       startAdornment: (
@@ -529,10 +531,12 @@ export const RecoveryPage: React.FC = () => {
                     sx={{
                       mb: 2.5,
                       '& .MuiOutlinedInput-root': {
-                        bgcolor: 'rgba(30, 41, 59, 0.7)',
-                        '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.15)' },
+                        color: '#F8FAFC',
+                        bgcolor: '#07111D',
+                        '& fieldset': { borderColor: 'rgba(148, 163, 184, 0.3)' },
                         '&:hover fieldset': { borderColor: '#38BDF8' },
                       },
+                      '& .MuiInputBase-input': { color: '#F8FAFC !important', WebkitTextFillColor: '#F8FAFC !important' },
                     }}
                     InputProps={{
                       startAdornment: (
