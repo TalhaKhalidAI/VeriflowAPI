@@ -6,6 +6,7 @@ export interface KeyRecord {
   kid: string;
   public_key: string;
   status: 'active' | 'revoked' | 'expired' | string;
+  algorithm?: string;
   created_by?: number | null;
   issued_by?: number | null;
   created_at?: string | null;

@@ -1,10 +1,11 @@
 // src/pages/Keys/index.tsx
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   Typography,
   Button,
-
+  Checkbox,
+  FormControlLabel,
   Chip,
   IconButton,
   Dialog,
@@ -23,6 +24,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
+import QRCode from 'qrcode';
 import {
   AddRounded as AddIcon,
   AutorenewRounded as RotateIcon,
@@ -139,6 +141,82 @@ export function KeysPage() {
 
   const [pemModalOpen, setPemModalOpen] = useState(false);
   const [selectedKeyForPem, setSelectedKeyForPem] = useState<KeyRecord | null>(null);
+  const [pemShowQr, setPemShowQr] = useState(false);
+  const [pemQrPayloadType, setPemQrPayloadType] = useState<'base64' | 'pem' | 'json'>('base64');
+  const [pemQrDataUrl, setPemQrDataUrl] = useState<string | null>(null);
+
+  // Strip PEM headers, literal \n/\r escapes, and all line breaks so strict Base64/DER parsers never break
+  const extractCleanBase64Key = (pem?: string | null): string => {
+    if (!pem) return '';
+    return pem
+      .replace(/\\r/g, '')
+      .replace(/\\n/g, '')
+      .replace(/-----BEGIN [A-Z0-9 ]+-----/gi, '')
+      .replace(/-----END [A-Z0-9 ]+-----/gi, '')
+      .replace(/[\r\n\s]+/g, '')
+      .trim();
+  };
+
+  // Normalize standard PEM without trailing newline or accidental escaped \n
+  const normalizePemKey = (pem?: string | null): string => {
+    if (!pem) return '';
+    return pem
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\r\n/g, '\n')
+      .trim();
+  };
+
+  useEffect(() => {
+    if (!pemModalOpen || !selectedKeyForPem?.public_key || !pemShowQr) {
+      setPemQrDataUrl(null);
+      return;
+    }
+    const cleanBase64 = extractCleanBase64Key(selectedKeyForPem.public_key);
+    const cleanPem = normalizePemKey(selectedKeyForPem.public_key);
+
+    const qrContent =
+      pemQrPayloadType === 'base64'
+        ? cleanBase64
+        : pemQrPayloadType === 'json'
+        ? JSON.stringify({
+            key_id: selectedKeyForPem.id,
+            kid: selectedKeyForPem.kid,
+            name: selectedKeyForPem.name,
+            alg: selectedKeyForPem.algorithm || 'RS256',
+            public_key: cleanBase64,
+          })
+        : cleanPem;
+
+    let cancelled = false;
+    QRCode.toDataURL(qrContent, {
+      width: 320,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#FFFFFF' },
+    })
+      .then((url) => {
+        if (!cancelled) setPemQrDataUrl(url);
+      })
+      .catch((err) => {
+        console.error('Failed to generate public key QR code', err);
+        if (!cancelled) setPemQrDataUrl(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pemModalOpen, selectedKeyForPem, pemShowQr, pemQrPayloadType]);
+
+  const handleDownloadPublicKeyQR = () => {
+    if (!pemQrDataUrl || !selectedKeyForPem) return;
+    const a = document.createElement('a');
+    a.href = pemQrDataUrl;
+    a.download = `public_key_${selectedKeyForPem.kid || 'rsa'}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   const [privatePemModalOpen, setPrivatePemModalOpen] = useState(false);
   const [exportAuthModalOpen, setExportAuthModalOpen] = useState(false);
@@ -147,6 +225,68 @@ export function KeysPage() {
   const [exportOtp, setExportOtp] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [privatePemResult, setPrivatePemResult] = useState<string | null>(null);
+  const [privateShowQr, setPrivateShowQr] = useState(false);
+  const [privateQrPayloadType, setPrivateQrPayloadType] = useState<'base64' | 'pem' | 'json'>('base64');
+  const [privateQrDataUrl, setPrivateQrDataUrl] = useState<string | null>(null);
+  const [privateQrError, setPrivateQrError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!privatePemModalOpen || !privatePemResult || !privateShowQr) {
+      setPrivateQrDataUrl(null);
+      setPrivateQrError(null);
+      return;
+    }
+    const cleanBase64 = extractCleanBase64Key(privatePemResult);
+    const cleanPem = normalizePemKey(privatePemResult);
+
+    const qrContent =
+      privateQrPayloadType === 'base64'
+        ? cleanBase64
+        : privateQrPayloadType === 'json'
+        ? JSON.stringify({
+            key_id: targetKeyForExport?.id,
+            kid: targetKeyForExport?.kid,
+            name: targetKeyForExport?.name,
+            alg: targetKeyForExport?.algorithm || 'RS256',
+            private_key: cleanBase64,
+          })
+        : cleanPem;
+
+    let cancelled = false;
+    setPrivateQrError(null);
+    QRCode.toDataURL(qrContent, {
+      width: 360,
+      margin: 2,
+      errorCorrectionLevel: 'L',
+      color: { dark: '#000000', light: '#FFFFFF' },
+    })
+      .then((url) => {
+        if (!cancelled) setPrivateQrDataUrl(url);
+      })
+      .catch((err) => {
+        console.error('Failed to generate private key QR code', err);
+        if (!cancelled) {
+          setPrivateQrDataUrl(null);
+          setPrivateQrError(
+            'Key payload exceeds standard QR code capacity (e.g. 4096-bit key). Switch to "Clean Base64 (No \\n)" or copy the key text directly.'
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [privatePemModalOpen, privatePemResult, privateShowQr, privateQrPayloadType, targetKeyForExport]);
+
+  const handleDownloadPrivateKeyQR = () => {
+    if (!privateQrDataUrl) return;
+    const a = document.createElement('a');
+    a.href = privateQrDataUrl;
+    a.download = `private_key_${targetKeyForExport?.kid || 'rsa'}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   const [jwksModalOpen, setJwksModalOpen] = useState(false);
   const [issueTokenModalOpen, setIssueTokenModalOpen] = useState(false);
@@ -453,7 +593,7 @@ export function KeysPage() {
   const keyActions: TableAction<KeyRecord>[] = [
     ...(canViewKeys ? [{
       icon: <VisibilityIcon fontSize="small" />,
-      title: 'View Public Key PEM',
+      title: 'View Public Key (Raw PEM / QR Code)',
       variant: 'info' as const,
       onClick: (k: KeyRecord) => {
         setSelectedKeyForPem(k);
@@ -462,7 +602,7 @@ export function KeysPage() {
     }] : []),
     ...(isAdmin ? [{
       icon: <SecurityIcon fontSize="small" />,
-      title: 'Export Decrypted Private Key (Admin Only)',
+      title: 'Export Decrypted Private Key (Raw PEM / QR Code)',
       variant: 'warning' as const,
       onClick: (k: KeyRecord) => handleOpenExportAuth(k),
     }] : []),
@@ -768,28 +908,261 @@ export function KeysPage() {
         </DialogActions>
       </Dialog>
 
-      {/* VIEW PUBLIC KEY PEM */}
+      {/* VIEW PUBLIC KEY PEM / QR CODE MODAL */}
       <Dialog open={pemModalOpen} onClose={() => setPemModalOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ bgcolor: '#0B132B', color: '#F8FAFC' }}>
-          Public Key PEM: {selectedKeyForPem?.kid}
-        </DialogTitle>
-        <DialogContent sx={{ bgcolor: '#0B132B', pt: 2 }}>
-          <Paper sx={{ p: 2, bgcolor: '#07111D', border: '1px solid #1E293B', borderRadius: 2 }}>
-            <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, color: '#38BDF8', m: 0 }}>
-              {selectedKeyForPem?.public_key}
-            </Typography>
-          </Paper>
-        </DialogContent>
-        <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
-          <Button
-            startIcon={<CopyIcon />}
-            variant="outlined"
-            onClick={() => handleCopy(selectedKeyForPem?.public_key || '', 'Public Key PEM')}
-            sx={{ color: '#38BDF8', borderColor: '#38BDF8' }}
+        <DialogTitle
+          sx={{
+            bgcolor: '#0B132B',
+            color: '#F8FAFC',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 1.5,
+            borderBottom: '1px solid #1E293B',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            {pemShowQr ? <QrCodeIcon sx={{ color: '#FACC15' }} /> : <KeyIcon sx={{ color: '#38BDF8' }} />}
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800} sx={{ color: '#F8FAFC', lineHeight: 1.2 }}>
+                Public Key ({selectedKeyForPem?.name || 'RSA-2048'})
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#94A3B8', fontFamily: 'monospace' }}>
+                kid: {selectedKeyForPem?.kid} • Owner: {getUserLabel(selectedKeyForPem?.created_by)}
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* Checkbox to switch between Raw PEM and In-Browser QR Code */}
+          <Box
+            sx={{
+              px: 1.5,
+              py: 0.5,
+              borderRadius: 2,
+              bgcolor: pemShowQr ? 'rgba(250, 204, 21, 0.12)' : 'rgba(56, 189, 248, 0.1)',
+              border: pemShowQr ? '1px solid rgba(250, 204, 21, 0.4)' : '1px solid rgba(56, 189, 248, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+            }}
           >
-            Copy PEM
-          </Button>
-          <Button onClick={() => setPemModalOpen(false)} sx={{ color: '#94A3B8' }}>
+            <FormControlLabel
+              sx={{ m: 0 }}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={pemShowQr}
+                  onChange={(e) => setPemShowQr(e.target.checked)}
+                  sx={{
+                    color: '#38BDF8',
+                    p: 0.5,
+                    mr: 0.5,
+                    '&.Mui-checked': { color: '#FACC15' },
+                  }}
+                />
+              }
+              label={
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    color: pemShowQr ? '#FACC15' : '#38BDF8',
+                    letterSpacing: '0.02em',
+                  }}
+                >
+                  {pemShowQr ? 'QR CODE VIEW ACTIVE (Uncheck for Raw PEM)' : 'View as Scannable QR Code'}
+                </Typography>
+              }
+            />
+          </Box>
+        </DialogTitle>
+
+        <DialogContent sx={{ bgcolor: '#0B132B', pt: 2.5 }}>
+          {pemShowQr ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 1 }}>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className="text-xs font-mono text-slate-400">QR Payload Format:</span>
+                <div className="join">
+                  <button
+                    type="button"
+                    onClick={() => setPemQrPayloadType('base64')}
+                    className={`join-item btn btn-xs font-mono ${
+                      pemQrPayloadType === 'base64'
+                        ? 'btn-warning text-slate-900 font-bold'
+                        : 'bg-[#07111D] text-slate-300 border-[#1E293B]'
+                    }`}
+                  >
+                    Clean Base64 (No \n)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPemQrPayloadType('pem')}
+                    className={`join-item btn btn-xs font-mono ${
+                      pemQrPayloadType === 'pem'
+                        ? 'btn-warning text-slate-900 font-bold'
+                        : 'bg-[#07111D] text-slate-300 border-[#1E293B]'
+                    }`}
+                  >
+                    Standard PEM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPemQrPayloadType('json')}
+                    className={`join-item btn btn-xs font-mono ${
+                      pemQrPayloadType === 'json'
+                        ? 'btn-warning text-slate-900 font-bold'
+                        : 'bg-[#07111D] text-slate-300 border-[#1E293B]'
+                    }`}
+                  >
+                    JSON (kid + Clean Key)
+                  </button>
+                </div>
+              </div>
+
+              <Typography variant="body2" sx={{ color: '#94A3B8', textAlign: 'center', maxWidth: 540 }}>
+                {pemQrPayloadType === 'base64'
+                  ? 'Single-line X.509 Base64 key with all \\n, \\r, and PEM headers stripped so strict mobile decoders never break.'
+                  : pemQrPayloadType === 'json'
+                  ? 'JSON bundle with kid and single-line Base64 public_key (zero \\n escape characters).'
+                  : 'Standard X.509 PEM format with normalized line endings and no trailing newline.'}
+              </Typography>
+
+              {pemQrDataUrl ? (
+                <Paper
+                  sx={{
+                    p: 2,
+                    bgcolor: '#FFFFFF',
+                    borderRadius: 3,
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6)',
+                    border: '3px solid #FACC15',
+                  }}
+                >
+                  <img
+                    src={pemQrDataUrl}
+                    alt={`Public Key QR ${selectedKeyForPem?.kid}`}
+                    style={{ display: 'block', width: 280, maxWidth: '100%', height: 'auto' }}
+                  />
+                </Paper>
+              ) : (
+                <CircularProgress sx={{ color: '#FACC15', my: 4 }} />
+              )}
+
+              <Chip
+                size="small"
+                label={`kid: ${selectedKeyForPem?.kid || 'N/A'} • ${
+                  pemQrPayloadType === 'base64'
+                    ? 'Clean Base64 (Zero \\n / No Headers)'
+                    : pemQrPayloadType === 'json'
+                    ? 'JSON Bundle (kid + Clean Base64)'
+                    : 'Standard X.509 PEM'
+                }`}
+                sx={{
+                  bgcolor: 'rgba(250, 204, 21, 0.12)',
+                  color: '#FACC15',
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                }}
+              />
+            </Box>
+          ) : (
+            <Stack spacing={1.5}>
+              <Box>
+                <Typography variant="caption" sx={{ color: '#94A3B8', fontFamily: 'monospace', display: 'block', mb: 0.5 }}>
+                  CLEAN SINGLE-LINE BASE64 (NO \n OR PEM HEADERS — SAFE FOR ANDROID / DER DECODERS):
+                </Typography>
+                <Paper
+                  sx={{
+                    p: 1.5,
+                    bgcolor: '#07111D',
+                    border: '1px solid rgba(250, 204, 21, 0.35)',
+                    borderRadius: 2,
+                    overflowX: 'auto',
+                  }}
+                >
+                  <Typography
+                    component="pre"
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      color: '#FACC15',
+                      m: 0,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {extractCleanBase64Key(selectedKeyForPem?.public_key)}
+                  </Typography>
+                </Paper>
+              </Box>
+
+              <Box>
+                <Typography variant="caption" sx={{ color: '#94A3B8', fontFamily: 'monospace', display: 'block', mb: 0.5 }}>
+                  STANDARD X.509 PEM FORMAT:
+                </Typography>
+                <Paper
+                  sx={{
+                    p: 2,
+                    bgcolor: '#07111D',
+                    border: '1px solid #1E293B',
+                    borderRadius: 2,
+                    overflowX: 'auto',
+                  }}
+                >
+                  <Typography
+                    component="pre"
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      color: '#38BDF8',
+                      m: 0,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {normalizePemKey(selectedKeyForPem?.public_key)}
+                  </Typography>
+                </Paper>
+              </Box>
+            </Stack>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ bgcolor: '#0B132B', p: 2, borderTop: '1px solid #1E293B', justifyContent: 'space-between' }}>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button
+              size="small"
+              startIcon={<CopyIcon />}
+              variant="outlined"
+              onClick={() =>
+                handleCopy(extractCleanBase64Key(selectedKeyForPem?.public_key), 'Clean Base64 Public Key (No \\n)')
+              }
+              sx={{ color: '#FACC15', borderColor: '#FACC15' }}
+            >
+              Copy Clean Base64 (No \n)
+            </Button>
+            <Button
+              size="small"
+              startIcon={<CopyIcon />}
+              variant="outlined"
+              onClick={() => handleCopy(normalizePemKey(selectedKeyForPem?.public_key), 'Standard PEM')}
+              sx={{ color: '#38BDF8', borderColor: '#38BDF8' }}
+            >
+              Copy Standard PEM
+            </Button>
+            {pemShowQr && pemQrDataUrl && (
+              <Button
+                size="small"
+                startIcon={<DownloadIcon />}
+                variant="contained"
+                onClick={handleDownloadPublicKeyQR}
+                sx={{ bgcolor: '#FACC15', color: '#07111D', fontWeight: 700, '&:hover': { bgcolor: '#EAB308' } }}
+              >
+                Download QR (PNG)
+              </Button>
+            )}
+          </Stack>
+          <Button size="small" onClick={() => setPemModalOpen(false)} sx={{ color: '#94A3B8' }}>
             Close
           </Button>
         </DialogActions>
@@ -893,31 +1266,285 @@ export function KeysPage() {
         </DialogActions>
       </Dialog>
 
-      {/* VIEW DECRYPTED PRIVATE KEY PEM (ADMIN ONLY) */}
-      <Dialog open={privatePemModalOpen} onClose={() => setPrivatePemModalOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ bgcolor: '#0B132B', color: '#EF4444', display: 'flex', alignItems: 'center', gap: 1 }}>
-          <SecurityIcon /> Decrypted Private Key PEM (Confidential)
-        </DialogTitle>
-        <DialogContent sx={{ bgcolor: '#0B132B', pt: 2 }}>
-          <Alert severity="error" sx={{ mb: 2 }}>
-            CRITICAL SECURITY MATERIAL: This decrypted RSA private key can sign tokens as this authority.
-          </Alert>
-          <Paper sx={{ p: 2, bgcolor: '#07111D', border: '1px solid #7F1D1D', borderRadius: 2 }}>
-            <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, color: '#FCA5A5', m: 0 }}>
-              {privatePemResult}
-            </Typography>
-          </Paper>
-        </DialogContent>
-        <DialogActions sx={{ bgcolor: '#0B132B', p: 2 }}>
-          <Button
-            startIcon={<CopyIcon />}
-            variant="outlined"
-            onClick={() => handleCopy(privatePemResult || '', 'Private Key PEM')}
-            sx={{ color: '#EF4444', borderColor: '#EF4444' }}
+      {/* VIEW DECRYPTED PRIVATE KEY PEM / QR CODE (ADMIN ONLY) */}
+      <Dialog
+        open={privatePemModalOpen}
+        onClose={() => {
+          setPrivatePemModalOpen(false);
+          setPrivatePemResult(null);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            bgcolor: '#0B132B',
+            color: '#EF4444',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 1.5,
+            borderBottom: '1px solid #7F1D1D',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            {privateShowQr ? <QrCodeIcon sx={{ color: '#FACC15' }} /> : <SecurityIcon sx={{ color: '#EF4444' }} />}
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800} sx={{ color: '#EF4444', lineHeight: 1.2 }}>
+                Decrypted Private Key ({targetKeyForExport?.name || 'RSA Confidential'})
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#FCA5A5', fontFamily: 'monospace' }}>
+                kid: {targetKeyForExport?.kid || 'N/A'} • Step-Up Verified
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* Checkbox to switch between Raw Private Key and In-Browser QR Code */}
+          <Box
+            sx={{
+              px: 1.5,
+              py: 0.5,
+              borderRadius: 2,
+              bgcolor: privateShowQr ? 'rgba(250, 204, 21, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+              border: privateShowQr ? '1px solid rgba(250, 204, 21, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+            }}
           >
-            Copy Private Key
-          </Button>
-          <Button onClick={() => setPrivatePemModalOpen(false)} sx={{ color: '#94A3B8' }}>
+            <FormControlLabel
+              sx={{ m: 0 }}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={privateShowQr}
+                  onChange={(e) => setPrivateShowQr(e.target.checked)}
+                  sx={{
+                    color: '#EF4444',
+                    p: 0.5,
+                    mr: 0.5,
+                    '&.Mui-checked': { color: '#FACC15' },
+                  }}
+                />
+              }
+              label={
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    color: privateShowQr ? '#FACC15' : '#FCA5A5',
+                    letterSpacing: '0.02em',
+                  }}
+                >
+                  {privateShowQr ? 'QR CODE VIEW ACTIVE (Uncheck for Raw Key)' : 'View as Scannable QR Code'}
+                </Typography>
+              }
+            />
+          </Box>
+        </DialogTitle>
+
+        <DialogContent sx={{ bgcolor: '#0B132B', pt: 2.5 }}>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            CRITICAL SECURITY MATERIAL: This decrypted RSA private key can sign tokens as this authority. Do not expose this screen or QR code to unauthorized cameras.
+          </Alert>
+
+          {privateShowQr ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 1 }}>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className="text-xs font-mono text-slate-400">QR Payload Format:</span>
+                <div className="join">
+                  <button
+                    type="button"
+                    onClick={() => setPrivateQrPayloadType('base64')}
+                    className={`join-item btn btn-xs font-mono ${
+                      privateQrPayloadType === 'base64'
+                        ? 'btn-warning text-slate-900 font-bold'
+                        : 'bg-[#07111D] text-slate-300 border-[#1E293B]'
+                    }`}
+                  >
+                    Clean Base64 (No \n)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrivateQrPayloadType('pem')}
+                    className={`join-item btn btn-xs font-mono ${
+                      privateQrPayloadType === 'pem'
+                        ? 'btn-warning text-slate-900 font-bold'
+                        : 'bg-[#07111D] text-slate-300 border-[#1E293B]'
+                    }`}
+                  >
+                    Standard PEM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrivateQrPayloadType('json')}
+                    className={`join-item btn btn-xs font-mono ${
+                      privateQrPayloadType === 'json'
+                        ? 'btn-warning text-slate-900 font-bold'
+                        : 'bg-[#07111D] text-slate-300 border-[#1E293B]'
+                    }`}
+                  >
+                    JSON (kid + Clean Key)
+                  </button>
+                </div>
+              </div>
+
+              <Typography variant="body2" sx={{ color: '#94A3B8', textAlign: 'center', maxWidth: 540 }}>
+                {privateQrPayloadType === 'base64'
+                  ? 'Single-line PKCS#8 Base64 private key with all \\n, \\r, and PEM headers stripped so Android KeyFactory / PKCS8EncodedKeySpec never breaks.'
+                  : privateQrPayloadType === 'json'
+                  ? 'JSON bundle with kid and single-line Base64 private_key (zero \\n escape characters).'
+                  : 'Standard PKCS#8 PEM format with normalized line endings and no trailing newline.'}
+              </Typography>
+
+              {privateQrError ? (
+                <Alert severity="warning" sx={{ maxWidth: 500 }}>
+                  {privateQrError}
+                </Alert>
+              ) : privateQrDataUrl ? (
+                <Paper
+                  sx={{
+                    p: 2,
+                    bgcolor: '#FFFFFF',
+                    borderRadius: 3,
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6)',
+                    border: '3px solid #EF4444',
+                  }}
+                >
+                  <img
+                    src={privateQrDataUrl}
+                    alt={`Private Key QR ${targetKeyForExport?.kid}`}
+                    style={{ display: 'block', width: 320, maxWidth: '100%', height: 'auto' }}
+                  />
+                </Paper>
+              ) : (
+                <CircularProgress sx={{ color: '#EF4444', my: 4 }} />
+              )}
+
+              <Chip
+                size="small"
+                label={`CONFIDENTIAL • kid: ${targetKeyForExport?.kid || 'N/A'} • ${
+                  privateQrPayloadType === 'base64'
+                    ? 'Clean Base64 (Zero \\n / No Headers)'
+                    : privateQrPayloadType === 'json'
+                    ? 'JSON Bundle (kid + Clean Base64)'
+                    : 'Standard PKCS#8 PEM'
+                }`}
+                sx={{
+                  bgcolor: 'rgba(239, 68, 68, 0.15)',
+                  color: '#FCA5A5',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                }}
+              />
+            </Box>
+          ) : (
+            <Stack spacing={1.5}>
+              <Box>
+                <Typography variant="caption" sx={{ color: '#FCA5A5', fontFamily: 'monospace', display: 'block', mb: 0.5 }}>
+                  CLEAN SINGLE-LINE BASE64 (NO \n OR PEM HEADERS — SAFE FOR ANDROID PKCS8EncodedKeySpec):
+                </Typography>
+                <Paper
+                  sx={{
+                    p: 1.5,
+                    bgcolor: '#07111D',
+                    border: '1px solid rgba(250, 204, 21, 0.35)',
+                    borderRadius: 2,
+                    overflowX: 'auto',
+                  }}
+                >
+                  <Typography
+                    component="pre"
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      color: '#FACC15',
+                      m: 0,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {extractCleanBase64Key(privatePemResult)}
+                  </Typography>
+                </Paper>
+              </Box>
+
+              <Box>
+                <Typography variant="caption" sx={{ color: '#94A3B8', fontFamily: 'monospace', display: 'block', mb: 0.5 }}>
+                  STANDARD PKCS#8 PEM FORMAT:
+                </Typography>
+                <Paper
+                  sx={{
+                    p: 2,
+                    bgcolor: '#07111D',
+                    border: '1px solid #7F1D1D',
+                    borderRadius: 2,
+                    overflowX: 'auto',
+                  }}
+                >
+                  <Typography
+                    component="pre"
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      color: '#FCA5A5',
+                      m: 0,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {normalizePemKey(privatePemResult)}
+                  </Typography>
+                </Paper>
+              </Box>
+            </Stack>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ bgcolor: '#0B132B', p: 2, borderTop: '1px solid #7F1D1D', justifyContent: 'space-between' }}>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button
+              size="small"
+              startIcon={<CopyIcon />}
+              variant="outlined"
+              onClick={() =>
+                handleCopy(extractCleanBase64Key(privatePemResult), 'Clean Base64 Private Key (No \\n)')
+              }
+              sx={{ color: '#FACC15', borderColor: '#FACC15' }}
+            >
+              Copy Clean Base64 (No \n)
+            </Button>
+            <Button
+              size="small"
+              startIcon={<CopyIcon />}
+              variant="outlined"
+              onClick={() => handleCopy(normalizePemKey(privatePemResult), 'Standard Private Key PEM')}
+              sx={{ color: '#EF4444', borderColor: '#EF4444' }}
+            >
+              Copy Standard PEM
+            </Button>
+            {privateShowQr && privateQrDataUrl && (
+              <Button
+                size="small"
+                startIcon={<DownloadIcon />}
+                variant="contained"
+                onClick={handleDownloadPrivateKeyQR}
+                sx={{ bgcolor: '#EF4444', color: '#FFFFFF', fontWeight: 700, '&:hover': { bgcolor: '#DC2626' } }}
+              >
+                Download Private QR (PNG)
+              </Button>
+            )}
+          </Stack>
+          <Button
+            size="small"
+            onClick={() => {
+              setPrivatePemModalOpen(false);
+              setPrivatePemResult(null);
+            }}
+            sx={{ color: '#94A3B8' }}
+          >
             Close
           </Button>
         </DialogActions>
